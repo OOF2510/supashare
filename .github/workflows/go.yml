@@ -1,0 +1,32 @@
+name: Build
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.25.5'
+    
+    - name: Set short git commit SHA
+      run: calculatedSha=$(git rev-parse --short ${{ github.sha }}) && echo "COMMIT_SHORT_SHA=$calculatedSha" >> $GITHUB_ENV
+
+    - name: Build
+      run: chmod +x ./build.sh && ./build.sh ${{ env.COMMIT_SHORT_SHA }}
+
+    - name: Upload a Build Artifact
+      uses: actions/upload-artifact@v6.0.0
+      with:
+        path: ./dist/geofinder-1v1-ws-${{ env.COMMIT_SHORT_SHA }}.x86_64
+
+          
