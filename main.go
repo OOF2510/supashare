@@ -1,8 +1,9 @@
-package supashare
+package main
 
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -26,7 +27,7 @@ func initS3() *s3.Client {
 	)
 	if err != nil {
 		msg := fmt.Errorf("unable to load SDK config, %v", err)
-		panic(msg)
+		log.Panic(msg)
 	}
 
 	client := s3.NewFromConfig(cfg, func(op *s3.Options) {
@@ -53,9 +54,12 @@ func main() {
 	_ = s3Client // setup endpoint later
 
 	app.Get("/", func(ctx *fiber.Ctx) error {
-		return ctx.JSON(map[string]string{"message": "Hello, World!"})
+		ctx.Set(fiber.HeaderContentType, "text/html")
+		return ctx.SendFile("pages/index.htmx")
 	})
 
 	fmt.Printf("Starting server on http://localhost:%s\n", port)
-	app.Listen(port)
+	if err := app.Listen(":" + port); err != nil {
+		fmt.Printf("Server error: %v\n", err)
+	}
 }
