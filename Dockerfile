@@ -16,6 +16,8 @@ RUN apk --no-cache add ca-certificates
 
 WORKDIR /app
 
+COPY ./pages/ ./pages/
+
 COPY --from=builder /app/main .
 
 EXPOSE 8080
