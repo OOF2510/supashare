@@ -20,7 +20,8 @@ go mod tidy
 
 echo "=== Building the project... ==="
 mkdir -p dist/${VERSION}
-go build -v -x -race -o dist/${VERSION}/${PROJECT_NAME}-${VERSION}.x86_64 main.go
+go build -v -x -race -o dist/${VERSION}/${PROJECT_NAME}-${VERSION}.x86_64 .
+echo "=== Build finished. Setting executable permissions... ==="
 chmod +x dist/${VERSION}/${PROJECT_NAME}-${VERSION}.x86_64
 
 echo "=== Copying pages... ==="
