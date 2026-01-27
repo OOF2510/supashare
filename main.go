@@ -11,12 +11,18 @@ import (
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		fmt.Println("Error loading .env file")
+		fmt.Println("Error loading .env file, proceeding with system environment variables")
 	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
+	}
+
+	err = initDB()
+	if err != nil {
+		fmt.Printf("Database initialization error: %v\n", err)
+		return
 	}
 
 	app := fiber.New()
@@ -47,7 +53,6 @@ func main() {
 
 		fmt.Printf("File %s uploaded successfully\n", file.Filename)
 		return ctx.SendString(fmt.Sprintf("<p>File %s uploaded successfully!</p>", file.Filename))
-
 	})
 
 	fmt.Printf("Starting server on http://localhost:%s\n", port)
@@ -55,3 +60,4 @@ func main() {
 		fmt.Printf("Server error: %v\n", err)
 	}
 }
+

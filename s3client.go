@@ -40,26 +40,50 @@ func initS3() *s3.Client {
 func UploadFile(ctx *fiber.Ctx, s3Client *s3.Client) error {
 	file, err := ctx.FormFile("file")
 	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "No file uploaded")
+		return fiber.NewError(fiber.StatusBadRequest, "<p>No file uploaded</p>")
+	}
+
+	userId := ctx.FormValue("user_id")
+	if userId == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "<p>User ID is required</p>")
 	}
 
 	fileBuffer, err := file.Open()
 	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "Could not create file buffer")
+		return fiber.NewError(fiber.StatusInternalServerError, "<p>Could not create file buffer</p>")
 	}
 	defer fileBuffer.Close()
 
 	bucketName := os.Getenv("S3_BUCKET_NAME")
 	objectKey := file.Filename
 
-	result, err := s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
+	_ , err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
 		Bucket: aws.String(bucketName),
 		Key:    aws.String(objectKey),
 		Body:   fileBuffer,
 	})
 	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, fmt.Sprintf("Failed to upload to S3: %v", err))
+		return fiber.NewError(fiber.StatusInternalServerError, fmt.Sprintf("<p>Failed to upload to Supabase: %v</p>", err))
 	}
 
-	return ctx.SendString(fmt.Sprintf("<p>File %s uploaded successfully! ETag: %s</p>", file.Filename, *result.ETag))
+	shareLink := generateShareLink(file.Filename)
+
+	uploadRecord := Upload{
+		UserID:     userId,
+		Filename:   file.Filename,
+		FileKey:    objectKey,
+		FileSize:   file.Size,
+		ShareLink:  shareLink,
+	}
+
+		if err := DB.Create(&uploadRecord).Error; err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "<p>Failed to save upload record to database</p>")
+	}
+
+	return ctx.SendString(fmt.Sprintf("<p>File %s uploaded successfully!</p>", file.Filename))
+}
+
+// Placeholder for share link generation
+func generateShareLink(filename string) string {
+	return fmt.Sprintf("https://supashare.oof2510.space/share/%s", filename)
 }

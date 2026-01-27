@@ -311,12 +311,12 @@
                             </div>
                             <div id="files-container"></div>
                         </div>
+                    <div id="upload-result"></div>
                         <div class="progress-container">
                             <progress id='upload-progress' value='0' max='100' class="progress-bar" hidden></progress>
                         </div>
                         <button type="submit" class="btn" style="margin-top: 1rem;">Upload Files</button>
                     </form>
-                    <div id="upload-result"></div>
                 </div>
 
                 <!-- Create Zip Card -->
@@ -338,7 +338,7 @@
                 <!-- Compress Media Card -->
                 <div class="card">
                     <h3 class="card-title">Compress Media</h3>
-                    <p class="card-description">Reduce file size of images and videos while maintaining quality.</p>
+                    <p class="card-description">Reduce file size of images and videos.</p>
                     
                     <form hx-post='/compress-media' hx-target='#compress-result'>
                         <div class="upload-area">
@@ -364,7 +364,7 @@
             <div class="shares-section">
                 <div class="section-header">
                     <h2 class="section-title">My Shares</h2>
-                    <button class="btn btn-secondary" hx-get="/refresh-shares" hx-target="#shares-list">Refresh</button>
+                    <button class="btn btn-secondary" hx-get="/my-shares" hx-target="#shares-list">Refresh</button>
                 </div>
                 
                 <div id="shares-list">
@@ -378,6 +378,24 @@
     </div>
 
     <script>
+
+        // Generate or retrieve user ID
+        function getUserID() {
+            let userID = localStorage.getItem('supashare_user_id');
+            if (!userID) {
+                userID = crypto.randomUUID();
+                localStorage.setItem('supashare_user_id', userID);
+            }
+            return userID;
+        }
+
+        // Add user ID to all upload requests
+        document.addEventListener('htmx:configRequest', function(evt) {
+            if (evt.detail.path === '/upload') {
+                evt.detail.parameters['user_id'] = getUserID();
+            }
+        });
+
         function formatFileSize(bytes) {
             if (bytes === 0) return '0 Bytes';
             const k = 1024;
