@@ -305,7 +305,7 @@
                         </div>
                         <input type='file' name='files' id='file-input' class="file-input" multiple>
                         <div class="progress-container">
-                            <progress id='upload-progress' value='0' max='100' class="progress-bar"></progress>
+                            <progress id='upload-progress' value='0' max='100' class="progress-bar" hidden></progress>
                         </div>
                         <button type="submit" class="btn" style="margin-top: 1rem;">Upload Files</button>
                     </form>
@@ -394,6 +394,7 @@
         // Upload progress
         htmx.on('#upload-form', 'htmx:xhr:progress', function(evt) {
             const progressBar = htmx.find('#upload-progress');
+            progressBar.removeAttribute('hidden');
             progressBar.setAttribute('value', evt.detail.loaded/evt.detail.total * 100);
         });
 
