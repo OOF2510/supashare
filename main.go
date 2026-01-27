@@ -27,11 +27,12 @@ func main() {
 		return ctx.SendFile("pages/index.htmx")
 	})
 
-	app.Get("/upload", func(ctx *fiber.Ctx) error {
+	app.Post("/upload", func(ctx *fiber.Ctx) error {
 		ctx.Set(fiber.HeaderContentType, "text/html")
 
 		file, err := ctx.FormFile("file")
 		if err != nil {
+			fmt.Println(fmt.Errorf("No file uploaded: %w", err))
 			ctx.Status(fiber.StatusBadRequest)
 			return ctx.SendString("<p>Error: No file uploaded</p>")
 		}
@@ -39,10 +40,12 @@ func main() {
 		// upload to supabase storage
 		err = UploadFile(ctx, s3Client)
 		if err != nil {
+			fmt.Println(fmt.Errorf("Error uploading file: %w", err))
 			ctx.Status(fiber.StatusInternalServerError)
 			return ctx.SendString(fmt.Sprintf("<p>Error uploading file: %v</p>", err))
 		}
 
+		fmt.Printf("File %s uploaded successfully\n", file.Filename)
 		return ctx.SendString(fmt.Sprintf("<p>File %s uploaded successfully!</p>", file.Filename))
 
 	})

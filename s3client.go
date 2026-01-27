@@ -31,6 +31,7 @@ func initS3() *s3.Client {
 
 	client := s3.NewFromConfig(cfg, func(op *s3.Options) {
 		op.BaseEndpoint = aws.String(os.Getenv("S3_STORAGE_ENDPOINT"))
+		op.UsePathStyle = true
 	})
 
 	return client

@@ -298,17 +298,25 @@
                     <h3 class="card-title">Upload Files</h3>
                     <p class="card-description">Drag and drop files or click to browse and upload to Supashare.</p>
                     
-                    <form id='upload-form' hx-encoding='multipart/form-data' hx-post='/upload' hx-target='#upload-progress'>
+                    <form id='upload-form' hx-encoding='multipart/form-data' hx-post='/upload' hx-target='#upload-result'>
                         <div class="upload-area" id="upload-area">
                             <div class="upload-icon">📁</div>
                             <p>Click to upload or drag files here</p>
                         </div>
-                        <input type='file' name='files' id='file-input' class="file-input" multiple>
+                        <input type='file' name='file' id='file-input' class="file-input" multiple>
+                        <div id="selected-files" class="file-list" style="display: none;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                <p style="margin: 0; font-weight: 500;">Selected Files:</p>
+                                <button type="button" class="action-btn" id="clear-files" style="color: var(--danger);">Clear</button>
+                            </div>
+                            <div id="files-container"></div>
+                        </div>
                         <div class="progress-container">
                             <progress id='upload-progress' value='0' max='100' class="progress-bar" hidden></progress>
                         </div>
                         <button type="submit" class="btn" style="margin-top: 1rem;">Upload Files</button>
                     </form>
+                    <div id="upload-result"></div>
                 </div>
 
                 <!-- Create Zip Card -->
@@ -370,9 +378,67 @@
     </div>
 
     <script>
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        function displaySelectedFiles() {
+            const filesContainer = document.getElementById('files-container');
+            const selectedFilesDiv = document.getElementById('selected-files');
+            filesContainer.innerHTML = '';
+
+            if (fileInput.files.length === 0) {
+                selectedFilesDiv.style.display = 'none';
+                return;
+            }
+
+            selectedFilesDiv.style.display = 'block';
+
+            for (let file of fileInput.files) {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.innerHTML = `
+                    <div class="file-info">
+                        <div class="file-icon">📄</div>
+                        <div>
+                            <div class="file-name">${file.name}</div>
+                            <div class="file-size">${formatFileSize(file.size)}</div>
+                        </div>
+                    </div>
+                    <div class="file-actions">
+                        <button type="button" class="action-btn remove-file" data-filename="${file.name}" title="Remove file">✕</button>
+                    </div>
+                `;
+                filesContainer.appendChild(fileItem);
+            }
+
+            document.querySelectorAll('.remove-file').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    removeFileFromInput(btn.dataset.filename);
+                });
+            });
+        }
+
+        function removeFileFromInput(filename) {
+            const dataTransfer = new DataTransfer();
+            for (let file of fileInput.files) {
+                if (file.name !== filename) {
+                    dataTransfer.items.add(file);
+                }
+            }
+            fileInput.files = dataTransfer.files;
+            displaySelectedFiles();
+        }
+
         // File upload drag and drop
         const uploadArea = document.getElementById('upload-area');
         const fileInput = document.getElementById('file-input');
+        const clearFilesBtn = document.getElementById('clear-files');
         
         uploadArea.addEventListener('click', () => fileInput.click());
         
@@ -389,6 +455,15 @@
             e.preventDefault();
             uploadArea.classList.remove('dragover');
             fileInput.files = e.dataTransfer.files;
+            displaySelectedFiles();
+        });
+
+        fileInput.addEventListener('change', displaySelectedFiles);
+
+        clearFilesBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            fileInput.value = '';
+            displaySelectedFiles();
         });
 
         // Upload progress
