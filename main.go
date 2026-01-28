@@ -3,9 +3,14 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/host"
+	"github.com/shirou/gopsutil/v3/mem"
+	"github.com/shirou/gopsutil/v3/process"
 )
 
 func main() {
@@ -58,17 +63,9 @@ func main() {
 	app.Get("/my-shares", func(ctx *fiber.Ctx) error {
 		ctx.Set(fiber.HeaderContentType, "text/html")
 
-		userId := ctx.Query("user_id")
-		if userId == "" {
-			ctx.Status(fiber.StatusBadRequest)
-			return ctx.SendString("<p>Error: User ID is required</p>")
-		}
-
-		var uploads []Upload
-
-		if err := DB.Where("user_id = ?", userId).Order("uploaded_at DESC").Find(&uploads).Error; err != nil {
-			ctx.Status(fiber.StatusInternalServerError)
-			return ctx.SendString("<p>Error retrieving uploads</p>")
+		uploads, err := getUploads(ctx)
+		if err != nil {
+			fmt.Println(fmt.Errorf("Error retrieving uploads: %w", err))
 		}
 
 		if len(uploads) == 0 {
@@ -79,7 +76,6 @@ func main() {
 			</div>
 		`)
 		}
-
 		html := ""
 		for _, upload := range uploads {
 			html += fmt.Sprintf(`
@@ -99,6 +95,65 @@ func main() {
 		}
 
 		return ctx.SendString(html)
+	})
+
+	app.Get("/health", func(ctx *fiber.Ctx) error {
+		cpuPercent, err := cpu.Percent(time.Second, false)
+		if err != nil {
+			return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"ok":    false,
+				"error": "Could not retrieve CPU usage",
+			})
+		}
+		memStat, err := mem.VirtualMemory()
+		if err != nil {
+			return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"ok":    false,
+				"error": "Could not retrieve memory stats",
+			})
+		}
+
+		pid := os.Getpid()
+		proc, err := process.NewProcess(int32(pid))
+		if err != nil {
+			return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"ok":    false,
+				"error": "Could not retrieve process info",
+			})
+		}
+		procMemInfo, err := proc.MemoryInfo()
+		if err != nil {
+			return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"ok":    false,
+				"error": "Could not retrieve process memory stats",
+			})
+		}
+
+		hostInfo, err := host.Info()
+		if err != nil {
+			return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"ok":    false,
+				"error": "Could not retrieve host info",
+			})
+		}
+
+		return ctx.JSON(fiber.Map{
+			"ok": true,
+			"system": fiber.Map{
+				"cpu": fiber.Map{
+					"usage": cpuPercent[0],
+				},
+				"memory": fiber.Map{
+					"systemTotal": formatBytes(memStat.Total),
+					"processUsed": formatBytes(procMemInfo.RSS),
+				},
+				"host": fiber.Map{
+					"os":       hostInfo.OS,
+					"platform": hostInfo.Platform,
+					"uptime":   hostInfo.Uptime,
+				},
+			},
+		})
 	})
 
 	fmt.Printf("Starting server on http://localhost:%s\n", port)
