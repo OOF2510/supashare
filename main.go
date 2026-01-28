@@ -55,8 +55,54 @@ func main() {
 		return ctx.SendString(fmt.Sprintf("<p>File %s uploaded successfully!</p>", file.Filename))
 	})
 
+	app.Get("/my-shares", func(ctx *fiber.Ctx) error {
+		ctx.Set(fiber.HeaderContentType, "text/html")
+
+		userId := ctx.Query("user_id")
+		if userId == "" {
+			ctx.Status(fiber.StatusBadRequest)
+			return ctx.SendString("<p>Error: User ID is required</p>")
+		}
+
+		var uploads []Upload
+
+		if err := DB.Where("user_id = ?", userId).Order("uploaded_at DESC").Find(&uploads).Error; err != nil {
+			ctx.Status(fiber.StatusInternalServerError)
+			return ctx.SendString("<p>Error retrieving uploads</p>")
+		}
+
+		if len(uploads) == 0 {
+			return ctx.SendString(`
+			<div class="empty-state">
+				<div class="empty-state-icon">📂</div>
+				<p>No shares yet. Upload files to create shares.</p>
+			</div>
+		`)
+		}
+
+		html := ""
+		for _, upload := range uploads {
+			html += fmt.Sprintf(`
+			<div class="file-item">
+				<div class="file-info">
+					<div class="file-icon">📄</div>
+					<div>
+						<div class="file-name">%s</div>
+						<div class="file-size">%d bytes</div>
+					</div>
+				</div>
+				<div class="file-actions">
+					<button class="action-btn" onclick="copyLink('%s')">📋 Copy Link</button>
+				</div>
+			</div>
+		`, upload.Filename, upload.FileSize, upload.ShareLink)
+		}
+
+		return ctx.SendString(html)
+	})
+
 	fmt.Printf("Starting server on http://localhost:%s\n", port)
 	if err := app.Listen(":" + port); err != nil {
-		fmt.Printf("Server error: %v\n", err)
+		panic(fmt.Sprintf("Server error: %v\n", err))
 	}
 }
