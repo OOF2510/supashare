@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"fmt"
 	"os"
 	"time"
@@ -70,31 +71,39 @@ func main() {
 
 		if len(uploads) == 0 {
 			return ctx.SendString(`
-			<div class="empty-state">
-				<div class="empty-state-icon">📂</div>
-				<p>No shares yet. Upload files to create shares.</p>
-			</div>
-		`)
-		}
-		html := ""
-		for _, upload := range uploads {
-			html += fmt.Sprintf(`
-			<div class="file-item">
-				<div class="file-info">
-					<div class="file-icon">📄</div>
-					<div>
-						<div class="file-name">%s</div>
-						<div class="file-size">%d bytes</div>
-					</div>
-				</div>
-				<div class="file-actions">
-					<button class="action-btn" onclick="copyLink('%s')">📋 Copy Link</button>
-				</div>
-			</div>
-		`, upload.Filename, upload.FileSize, upload.ShareLink)
+        <div class="has-text-centered py-6">
+            <div style="font-size: 4rem; margin-bottom: 1rem; opacity: 0.5;">📂</div>
+            <p class="has-text-grey">No shares yet. Upload files to create shares.</p>
+        </div>
+        `)
 		}
 
-		return ctx.SendString(html)
+		var html strings.Builder
+		for _, upload := range uploads {
+			fmt.Fprintf(&html, `
+        <div class="box mb-3">
+            <div class="is-flex is-justify-content-space-between is-align-items-center">
+                <div class="is-flex is-align-items-center" style="gap: 1rem; flex: 1;">
+                    <div style="font-size: 1.5rem;">📄</div>
+                    <div style="flex: 1;">
+                        <div class="has-text-weight-semibold">%s</div>
+                        <div class="has-text-grey is-size-7">%s</div>
+                    </div>
+                </div>
+                <div class="is-flex" style="gap: 0.5rem;">
+                    <button class="button is-small is-primary is-light" onclick="copyLink('%s')">
+                        <span class="icon is-small">
+                            <span>📋</span>
+                        </span>
+                        <span>Copy Link</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        `, upload.Filename, formatBytes(uint64(upload.FileSize)), upload.ShareLink)
+		}
+
+		return ctx.SendString(html.String())
 	})
 
 	app.Get("/health", func(ctx *fiber.Ctx) error {
