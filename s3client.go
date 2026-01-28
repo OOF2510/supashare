@@ -57,7 +57,7 @@ func UploadFile(ctx *fiber.Ctx, s3Client *s3.Client) error {
 	bucketName := os.Getenv("S3_BUCKET_NAME")
 	objectKey := file.Filename
 
-	_ , err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
+	_, err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
 		Bucket: aws.String(bucketName),
 		Key:    aws.String(objectKey),
 		Body:   fileBuffer,
@@ -69,14 +69,14 @@ func UploadFile(ctx *fiber.Ctx, s3Client *s3.Client) error {
 	shareLink := generateShareLink(file.Filename)
 
 	uploadRecord := Upload{
-		UserID:     userId,
-		Filename:   file.Filename,
-		FileKey:    objectKey,
-		FileSize:   file.Size,
-		ShareLink:  shareLink,
+		UserID:    userId,
+		Filename:  file.Filename,
+		FileKey:   objectKey,
+		FileSize:  file.Size,
+		ShareLink: shareLink,
 	}
 
-		if err := DB.Create(&uploadRecord).Error; err != nil {
+	if err := DB.Create(&uploadRecord).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "<p>Failed to save upload record to database</p>")
 	}
 

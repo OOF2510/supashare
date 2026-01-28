@@ -21,8 +21,8 @@ func main() {
 
 	err = initDB()
 	if err != nil {
-		fmt.Printf("Database initialization error: %v\n", err)
-		return
+		msg := fmt.Errorf("Database initialization error: %v\n", err)
+		panic(msg)
 	}
 
 	app := fiber.New()
@@ -60,4 +60,3 @@ func main() {
 		fmt.Printf("Server error: %v\n", err)
 	}
 }
-

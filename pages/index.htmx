@@ -1,115 +1,17 @@
 <!Doctype html>
 <html>
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js"
+        integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz"
+        crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
     <title>Supashare - File Sharing</title>
     <style>
-        :root {
-            --primary: #6c5ce7;
-            --primary-dark: #5649c0;
-            --background: #1a1a2e;
-            --surface: #1f1f38;
-            --text: #e0e0e0;
-            --text-secondary: #a0a0a0;
-            --success: #00cec9;
-            --danger: #ff4757;
-            --border: #2d2d44;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-
-        body {
-            background-color: var(--background);
-            color: var(--text);
-            min-height: 100vh;
-            padding: 2rem;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 3rem;
-        }
-
-        .logo {
-            font-size: 1.8rem;
-            font-weight: bold;
-            color: var(--primary);
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .logo::before {
-            content: "📁";
-        }
-
-        nav {
-            display: flex;
-            gap: 1.5rem;
-        }
-
-        nav a {
-            color: var(--text-secondary);
-            text-decoration: none;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            transition: all 0.3s ease;
-        }
-
-        nav a:hover {
-            background-color: var(--surface);
-            color: var(--text);
-        }
-
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 2rem;
-            margin-bottom: 3rem;
-        }
-
-        .card {
-            background-color: var(--surface);
-            border-radius: 12px;
-            padding: 2rem;
-            border: 1px solid var(--border);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
-        }
-
-        .card-title {
-            font-size: 1.3rem;
-            font-weight: 600;
-            margin-bottom: 1rem;
-            color: var(--primary);
-        }
-
-        .card-description {
-            color: var(--text-secondary);
-            margin-bottom: 2rem;
-            line-height: 1.5;
-        }
-
         .upload-area {
-            border: 2px dashed var(--border);
+            border: 2px dashed #b5bdc1;
             border-radius: 10px;
             padding: 2rem;
             text-align: center;
@@ -119,257 +21,145 @@
         }
 
         .upload-area:hover {
-            border-color: var(--primary);
+            border-color: #3273dc;
         }
 
         .upload-area.dragover {
-            border-color: var(--primary);
-            background-color: rgba(108, 92, 231, 0.1);
-        }
-
-        .upload-icon {
-            font-size: 3rem;
-            color: var(--primary);
-            margin-bottom: 1rem;
+            border-color: #3273dc;
+            background-color: rgba(50, 115, 220, 0.1);
         }
 
         .file-input {
             display: none;
         }
 
-        .btn {
-            background-color: var(--primary);
-            color: white;
-            border: none;
-            padding: 0.8rem 1.5rem;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            width: 100%;
-        }
-
-        .btn:hover {
-            background-color: var(--primary-dark);
-            transform: translateY(-2px);
-        }
-
-        .btn-secondary {
-            background-color: var(--surface);
-            color: var(--primary);
-            border: 1px solid var(--border);
-        }
-
-        .btn-secondary:hover {
-            background-color: var(--border);
-        }
-
-        .progress-container {
-            margin-top: 1rem;
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
         }
 
         progress {
-            width: 100%;
             height: 8px;
-            border-radius: 4px;
-            background-color: var(--surface);
-        }
-
-        progress::-webkit-progress-bar {
-            background-color: var(--surface);
-            border-radius: 4px;
-        }
-
-        progress::-webkit-progress-value {
-            background-color: var(--primary);
-            border-radius: 4px;
-        }
-
-        .file-list {
-            margin-top: 2rem;
-        }
-
-        .file-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem;
-            background-color: var(--surface);
-            border-radius: 8px;
-            margin-bottom: 1rem;
-            border: 1px solid var(--border);
-        }
-
-        .file-info {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .file-icon {
-            font-size: 1.5rem;
-            color: var(--primary);
-        }
-
-        .file-name {
-            font-weight: 500;
-        }
-
-        .file-size {
-            color: var(--text-secondary);
-            font-size: 0.9rem;
-        }
-
-        .file-actions {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .action-btn {
-            background: none;
-            border: none;
-            color: var(--text-secondary);
-            cursor: pointer;
-            padding: 0.5rem;
-            border-radius: 6px;
-            transition: all 0.2s ease;
-        }
-
-        .action-btn:hover {
-            background-color: var(--border);
-            color: var(--text);
-        }
-
-        .shares-section {
-            margin-top: 3rem;
-        }
-
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-        }
-
-        .section-title {
-            font-size: 1.5rem;
-            font-weight: 600;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 3rem;
-            color: var(--text-secondary);
-        }
-
-        .empty-state-icon {
-            font-size: 4rem;
-            margin-bottom: 1rem;
-            opacity: 0.5;
         }
 
         @media (max-width: 768px) {
-            body {
-                padding: 1rem;
-            }
-
-            header {
-                flex-direction: column;
-                gap: 1rem;
-                align-items: flex-start;
-            }
-
             .dashboard-grid {
                 grid-template-columns: 1fr;
             }
         }
     </style>
 </head>
+
 <body>
     <div class="container">
-        <header>
-            <div class="logo">Supashare</div>
+        <header class="mb-6">
+            <div class="title is-2">📁 Supashare</div>
         </header>
 
         <main id="main-content">
             <div class="dashboard-grid">
                 <!-- File Upload Card -->
                 <div class="card">
-                    <h3 class="card-title">Upload Files</h3>
-                    <p class="card-description">Drag and drop files or click to browse and upload to Supashare.</p>
-                    
-                    <form id='upload-form' hx-encoding='multipart/form-data' hx-post='/upload' hx-target='#upload-result'>
-                        <div class="upload-area" id="upload-area">
-                            <div class="upload-icon">📁</div>
-                            <p>Click to upload or drag files here</p>
-                        </div>
-                        <input type='file' name='file' id='file-input' class="file-input" multiple>
-                        <div id="selected-files" class="file-list" style="display: none;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                                <p style="margin: 0; font-weight: 500;">Selected Files:</p>
-                                <button type="button" class="action-btn" id="clear-files" style="color: var(--danger);">Clear</button>
+                    <div class="card-content">
+                        <h3 class="title is-4">Upload Files</h3>
+                        <p class="subtitle is-6">Drag and drop files or click to browse and upload to Supashare.</p>
+
+                        <form id='upload-form' hx-encoding='multipart/form-data' hx-post='/upload'
+                            hx-target='#upload-result'>
+                            <div class="upload-area" id="upload-area">
+                                <div style="font-size: 3rem; margin-bottom: 1rem;">📁</div>
+                                <p>Click to upload or drag files here</p>
                             </div>
-                            <div id="files-container"></div>
-                        </div>
-                    <div id="upload-result"></div>
-                        <div class="progress-container">
-                            <progress id='upload-progress' value='0' max='100' class="progress-bar" hidden></progress>
-                        </div>
-                        <button type="submit" class="btn" style="margin-top: 1rem;">Upload Files</button>
-                    </form>
+                            <input type='file' name='file' id='file-input' class="file-input" multiple>
+                            <div id="selected-files" class="file-list" style="display: none;">
+                                <div class="is-flex is-justify-content-space-between is-align-items-center mb-3">
+                                    <p class="mb-0 has-text-weight-semibold">Selected Files:</p>
+                                    <button type="button" class="button is-small is-light is-danger"
+                                        id="clear-files">Clear</button>
+                                </div>
+                                <div id="files-container"></div>
+                            </div>
+                            <div id="upload-result"></div>
+                            <div class="mt-4">
+                                <progress id='upload-progress' value='0' max='100' class="progress is-primary"
+                                    hidden></progress>
+                            </div>
+                            <button type="submit" class="button is-primary is-fullwidth mt-4">Upload Files</button>
+                        </form>
+                    </div>
                 </div>
 
                 <!-- Create Zip Card -->
                 <div class="card">
-                    <h3 class="card-title">Create Zip Archive</h3>
-                    <p class="card-description">Combine multiple files into a single ZIP archive for easy sharing.</p>
-                    
-                    <form hx-post='/create-zip' hx-target='#zip-result'>
-                        <div class="upload-area">
-                            <div class="upload-icon">🗄️</div>
-                            <p>Select files to zip</p>
-                        </div>
-                        <input type='file' name='zip-files' id='zip-input' class="file-input" multiple>
-                        <button type="submit" class="btn" style="margin-top: 1rem;">Create Zip</button>
-                    </form>
-                    <div id="zip-result"></div>
+                    <div class="card-content">
+                        <h3 class="title is-4">Create Zip Archive</h3>
+                        <p class="subtitle is-6">Combine multiple files into a single ZIP archive for easy sharing.</p>
+
+                        <form hx-post='/create-zip' hx-target='#zip-result'>
+                            <div class="upload-area">
+                                <div style="font-size: 3rem; margin-bottom: 1rem;">🗄️</div>
+                                <p>Select files to zip</p>
+                            </div>
+                            <input type='file' name='zip-files' id='zip-input' class="file-input" multiple>
+                            <button type="submit" class="button is-primary is-fullwidth mt-4">Create Zip</button>
+                        </form>
+                        <div id="zip-result"></div>
+                    </div>
                 </div>
 
                 <!-- Compress Media Card -->
                 <div class="card">
-                    <h3 class="card-title">Compress Media</h3>
-                    <p class="card-description">Reduce file size of images and videos.</p>
-                    
-                    <form hx-post='/compress-media' hx-target='#compress-result'>
-                        <div class="upload-area">
-                            <div class="upload-icon">📸</div>
-                            <p>Upload images or videos</p>
-                        </div>
-                        <input type='file' name='media-files' id='media-input' class="file-input" accept="image/*,video/*" multiple>
-                        <div style="margin: 1rem 0;">
-                            <label style="display: block; margin-bottom: 0.5rem; font-size: 0.9rem;">Quality:</label>
-                            <select name="quality" style="width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid var(--border); background-color: var(--surface); color: var(--text);">
-                                <option value="high">High (Best Quality)</option>
-                                <option value="medium" selected>Medium (Balanced)</option>
-                                <option value="low">Low (Smallest Size)</option>
-                            </select>
-                        </div>
-                        <button type="submit" class="btn">Compress Media</button>
-                    </form>
-                    <div id="compress-result"></div>
+                    <div class="card-content">
+                        <h3 class="title is-4">Compress Media</h3>
+                        <p class="subtitle is-6">Reduce file size of images and videos.</p>
+
+                        <form hx-post='/compress-media' hx-target='#compress-result'>
+                            <div class="upload-area">
+                                <div style="font-size: 3rem; margin-bottom: 1rem;">📸</div>
+                                <p>Upload images or videos</p>
+                            </div>
+                            <input type='file' name='media-files' id='media-input' class="file-input"
+                                accept="image/*,video/*" multiple>
+                            <div class="field mt-4">
+                                <label class="label">Quality:</label>
+                                <div class="control">
+                                    <div class="select is-fullwidth">
+                                        <select name="quality">
+                                            <option value="high">High (Best Quality)</option>
+                                            <option value="medium" selected>Medium (Balanced)</option>
+                                            <option value="low">Low (Smallest Size)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="submit" class="button is-primary is-fullwidth mt-4">Compress Media</button>
+                        </form>
+                        <div id="compress-result"></div>
+                    </div>
                 </div>
             </div>
 
             <!-- My Shares Section -->
             <div class="shares-section">
-                <div class="section-header">
-                    <h2 class="section-title">My Shares</h2>
-                    <button class="btn btn-secondary" hx-get="/my-shares" hx-target="#shares-list">Refresh</button>
+                <div class="level mb-4">
+                    <div class="level-left">
+                        <div class="level-item">
+                            <h2 class="title is-3">My Shares</h2>
+                        </div>
+                    </div>
+                    <div class="level-right">
+                        <div class="level-item">
+                            <button class="button is-primary" hx-get="/my-shares"
+                                hx-target="#shares-list">Refresh</button>
+                        </div>
+                    </div>
                 </div>
-                
+
                 <div id="shares-list">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📂</div>
+                    <div class="content has-text-centered py-6">
+                        <div style="font-size: 4rem; margin-bottom: 1rem; opacity: 0.5;">📂</div>
                         <p>No shares yet. Upload files to create shares.</p>
                     </div>
                 </div>
@@ -390,7 +180,7 @@
         }
 
         // Add user ID to all upload requests
-        document.addEventListener('htmx:configRequest', function(evt) {
+        document.addEventListener('htmx:configRequest', function (evt) {
             if (evt.detail.path === '/upload') {
                 evt.detail.parameters['user_id'] = getUserID();
             }
@@ -418,17 +208,23 @@
 
             for (let file of fileInput.files) {
                 const fileItem = document.createElement('div');
-                fileItem.className = 'file-item';
+                fileItem.className = 'box mb-3';
                 fileItem.innerHTML = `
-                    <div class="file-info">
-                        <div class="file-icon">📄</div>
-                        <div>
-                            <div class="file-name">${file.name}</div>
-                            <div class="file-size">${formatFileSize(file.size)}</div>
+                    <div class="is-flex is-justify-content-space-between is-align-items-center">
+                        <div class="is-flex is-align-items-center" style="gap: 1rem; flex: 1;">
+                            <div style="font-size: 1.5rem;">📄</div>
+                            <div style="flex: 1;">
+                                <div class="has-text-weight-semibold">${file.name}</div>
+                                <div class="has-text-grey is-size-7">${formatFileSize(file.size)}</div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="file-actions">
-                        <button type="button" class="action-btn remove-file" data-filename="${file.name}" title="Remove file">✕</button>
+                        <div class="is-flex" style="gap: 0.5rem;">
+                            <button type="button" class="button is-small is-ghost remove-file" data-filename="${file.name}" title="Remove file">
+                                <span class="icon is-small">
+                                    <i class="fas fa-trash"></i>
+                                </span>
+                            </button>
+                        </div>
                     </div>
                 `;
                 filesContainer.appendChild(fileItem);
@@ -457,18 +253,18 @@
         const uploadArea = document.getElementById('upload-area');
         const fileInput = document.getElementById('file-input');
         const clearFilesBtn = document.getElementById('clear-files');
-        
+
         uploadArea.addEventListener('click', () => fileInput.click());
-        
+
         uploadArea.addEventListener('dragover', (e) => {
             e.preventDefault();
             uploadArea.classList.add('dragover');
         });
-        
+
         uploadArea.addEventListener('dragleave', () => {
             uploadArea.classList.remove('dragover');
         });
-        
+
         uploadArea.addEventListener('drop', (e) => {
             e.preventDefault();
             uploadArea.classList.remove('dragover');
@@ -485,23 +281,31 @@
         });
 
         // Upload progress
-        htmx.on('#upload-form', 'htmx:xhr:progress', function(evt) {
+        htmx.on('#upload-form', 'htmx:xhr:progress', function (evt) {
             const progressBar = htmx.find('#upload-progress');
             progressBar.removeAttribute('hidden');
-            progressBar.setAttribute('value', evt.detail.loaded/evt.detail.total * 100);
+            progressBar.setAttribute('value', evt.detail.loaded / evt.detail.total * 100);
+        });
+
+        // Hide progress bar after upload completes
+        htmx.on('#upload-form', 'htmx:afterRequest', function (evt) {
+            const progressBar = htmx.find('#upload-progress');
+            progressBar.setAttribute('hidden', '');
+            progressBar.setAttribute('value', '0');
         });
 
         // Zip functionality
         const zipArea = document.querySelector('.card:nth-child(2) .upload-area');
         const zipInput = document.getElementById('zip-input');
-        
+
         zipArea.addEventListener('click', () => zipInput.click());
 
         // Media functionality
         const mediaArea = document.querySelector('.card:nth-child(3) .upload-area');
         const mediaInput = document.getElementById('media-input');
-        
+
         mediaArea.addEventListener('click', () => mediaInput.click());
     </script>
 </body>
+
 </html>
