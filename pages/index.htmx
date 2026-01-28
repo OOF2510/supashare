@@ -82,9 +82,8 @@
                                 <div id="files-container"></div>
                             </div>
                             <div id="upload-result"></div>
-                            <div class="mt-4">
-                                <progress id='upload-progress' value='0' max='100' class="progress is-primary"
-                                    hidden></progress>
+                            <div class="mt-4" style="display: none;" id="progress-container">
+                                <progress id='upload-progress' value='0' max='100' class="progress is-primary"></progress>
                             </div>
                             <button type="submit" class="button is-primary is-fullwidth mt-4">Upload Files</button>
                         </form>
@@ -282,15 +281,17 @@
 
         // Upload progress
         htmx.on('#upload-form', 'htmx:xhr:progress', function (evt) {
+            const progressContainer = htmx.find('#progress-container');
             const progressBar = htmx.find('#upload-progress');
-            progressBar.removeAttribute('hidden');
+            progressContainer.style.display = 'block';
             progressBar.setAttribute('value', evt.detail.loaded / evt.detail.total * 100);
         });
 
         // Hide progress bar after upload completes
         htmx.on('#upload-form', 'htmx:afterRequest', function (evt) {
+            const progressContainer = htmx.find('#progress-container');
             const progressBar = htmx.find('#upload-progress');
-            progressBar.setAttribute('hidden', '');
+            progressContainer.style.display = 'none';
             progressBar.setAttribute('value', '0');
         });
 
