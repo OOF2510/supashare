@@ -1,9 +1,9 @@
 package main
 
 import (
-	"strings"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -13,6 +13,8 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/process"
 )
+
+var URL string
 
 func main() {
 	err := godotenv.Load()
@@ -24,6 +26,13 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
+
+	baseURL := os.Getenv("BASE_URL")
+	if baseURL == "" {
+		baseURL = "http://localhost"
+	}
+
+	URL = fmt.Sprintf("%s:%v/", baseURL, port) // ex: http://localhost:8080/
 
 	err = initDB()
 	if err != nil {
@@ -80,6 +89,9 @@ func main() {
 
 		var html strings.Builder
 		for _, upload := range uploads {
+
+			fileUrl := fmt.Sprintf("%sshare/%s", URL, upload.ShareLink)
+
 			fmt.Fprintf(&html, `
         <div class="box mb-3">
             <div class="is-flex is-justify-content-space-between is-align-items-center">
@@ -100,7 +112,7 @@ func main() {
                 </div>
             </div>
         </div>
-        `, upload.Filename, formatBytes(uint64(upload.FileSize)), upload.ShareLink)
+        `, upload.Filename, formatBytes(uint64(upload.FileSize)), fileUrl)
 		}
 
 		return ctx.SendString(html.String())
@@ -122,7 +134,7 @@ func main() {
 			return ctx.SendString("<p>Error retrieving file</p>")
 		}
 		defer fileStream.Close()
-		
+
 		ctx.Set(fiber.HeaderContentType, "application/octet-stream")
 		ctx.Set(fiber.HeaderContentDisposition, fmt.Sprintf("attachment; filename=\"%s\"", upload.Filename))
 		ctx.Set(fiber.HeaderContentLength, fmt.Sprintf("%d", upload.FileSize))
@@ -189,7 +201,7 @@ func main() {
 		})
 	})
 
-	fmt.Printf("Starting server on http://localhost:%s\n", port)
+	fmt.Printf("Starting server on %s\n", URL)
 	if err := app.Listen(":" + port); err != nil {
 		panic(fmt.Sprintf("Server error: %v\n", err))
 	}

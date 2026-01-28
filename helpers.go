@@ -49,7 +49,7 @@ func getUploads(ctx *fiber.Ctx) ([]Upload, error) {
 
 func generateShareLink() string {
 	bytes := make([]byte, 6)
-	
+
 	if _, err := rand.Read(bytes); err != nil {
 		return fmt.Sprintf("%d", time.Now().Unix()) // fallback to unix timestamp
 	}

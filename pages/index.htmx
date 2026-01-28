@@ -49,6 +49,48 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        /* Toast container */
+        #toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 350px;
+        }
+
+        .toast {
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .toast.hide {
+            animation: slideOut 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+        }
     </style>
 </head>
 
@@ -167,7 +209,48 @@
         </main>
     </div>
 
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
     <script>
+
+        // Toast notification function
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            // Bulma notification classes
+            const typeClass = type === 'success' ? 'is-success' : 'is-danger';
+            toast.className = `notification ${typeClass} toast`;
+            toast.innerHTML = `
+                <button class="delete"></button>
+                ${message}
+            `;
+            
+            container.appendChild(toast);
+            
+            // Add click handler to delete button
+            toast.querySelector('.delete').addEventListener('click', () => {
+                removeToast(toast);
+            });
+            
+            // Auto-remove after 3 seconds
+            setTimeout(() => removeToast(toast), 3000);
+        }
+
+        function removeToast(toast) {
+            toast.classList.add('hide');
+            setTimeout(() => toast.remove(), 300);
+        }
+
+        function copyLink(url) {
+            navigator.clipboard.writeText(url).then(() => {
+                showToast('Link copied to clipboard!', 'success');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                showToast('Failed to copy link', 'danger');
+            });
+        }
 
         // Generate or retrieve user ID
         function getUserID() {

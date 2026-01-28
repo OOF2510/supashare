@@ -84,7 +84,6 @@ func UploadFile(ctx *fiber.Ctx, s3Client *s3.Client) error {
 	return ctx.SendString(fmt.Sprintf("<p>File %s uploaded successfully!</p>", file.Filename))
 }
 
-
 func getFileStream(s3Client *s3.Client, fileKey string) (io.ReadCloser, error) {
 	bucketName := os.Getenv("S3_BUCKET_NAME")
 	output, err := s3Client.GetObject(context.TODO(), &s3.GetObjectInput{
