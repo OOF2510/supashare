@@ -119,18 +119,21 @@ func main() {
 	})
 
 	app.Get("/share/:id", func(ctx *fiber.Ctx) error {
-		ctx.Set(fiber.HeaderContentType, "text/html")
 		shareId := ctx.Params("id")
 
 		var upload Upload
 		if err := DB.Where(&Upload{ShareLink: shareId}).First(&upload).Error; err != nil {
 			ctx.Status(fiber.StatusNotFound)
+			ctx.Set(fiber.HeaderContentType, "text/html")
+			
 			return ctx.SendString("<p>File not found</p>")
 		}
 
 		fileStream, err := getFileStream(s3Client, upload.FileKey)
 		if err != nil {
 			ctx.Status(fiber.StatusInternalServerError)
+			ctx.Set(fiber.HeaderContentType, "text/html")
+
 			return ctx.SendString("<p>Error retrieving file</p>")
 		}
 		defer fileStream.Close()
