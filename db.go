@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 	"os"
 	"time"
 )
@@ -28,11 +29,17 @@ func initDB() error {
 	}
 
 	var err error
-	DB, err = gorm.Open(postgres.Open(url), &gorm.Config{})
+	DB, err = gorm.Open(postgres.New(postgres.Config{
+		DSN:                  url,
+		PreferSimpleProtocol: true,
+	}), &gorm.Config{
+		PrepareStmt: false,
+		Logger:      logger.Default.LogMode(logger.Error),
+	})
 	if err != nil {
 		return fmt.Errorf("Failed to connect to database: %w", err)
 	}
 
-	fmt.Println("Database Initialized Successfully")
+	fmt.Println("Database Initialized Successfully (PrepareStmt: false, PreferSimpleProtocol: true)")
 	return nil
 }

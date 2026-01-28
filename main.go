@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -125,7 +126,8 @@ func main() {
 		if err := DB.Where(&Upload{ShareLink: shareId}).First(&upload).Error; err != nil {
 			ctx.Status(fiber.StatusNotFound)
 			ctx.Set(fiber.HeaderContentType, "text/html")
-			
+
+			fmt.Println(fmt.Errorf("File not found for share ID %s: %w", shareId, err))
 			return ctx.SendString("<p>File not found</p>")
 		}
 
@@ -134,6 +136,7 @@ func main() {
 			ctx.Status(fiber.StatusInternalServerError)
 			ctx.Set(fiber.HeaderContentType, "text/html")
 
+			fmt.Println(fmt.Errorf("Error retrieving file stream: %w", err))
 			return ctx.SendString("<p>Error retrieving file</p>")
 		}
 		defer fileStream.Close()
@@ -142,7 +145,15 @@ func main() {
 		ctx.Set(fiber.HeaderContentDisposition, fmt.Sprintf("attachment; filename=\"%s\"", upload.Filename))
 		ctx.Set(fiber.HeaderContentLength, fmt.Sprintf("%d", upload.FileSize))
 
-		return ctx.SendStream(fileStream)
+		// copy stream to response
+		_, err = io.Copy(ctx.Response().BodyWriter(), fileStream)
+		if err != nil {
+			ctx.Status(fiber.StatusInternalServerError)
+			fmt.Println(fmt.Errorf("Error sending file: %w", err))
+			return nil
+		}
+
+		return nil
 	})
 
 	app.Get("/health", func(ctx *fiber.Ctx) error {
