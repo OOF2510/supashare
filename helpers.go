@@ -1,7 +1,10 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -42,4 +45,14 @@ func getUploads(ctx *fiber.Ctx) ([]Upload, error) {
 	}
 
 	return uploads, nil
+}
+
+func generateShareLink() string {
+	bytes := make([]byte, 6)
+	
+	if _, err := rand.Read(bytes); err != nil {
+		return fmt.Sprintf("%d", time.Now().Unix()) // fallback to unix timestamp
+	}
+
+	return base64.URLEncoding.EncodeToString(bytes)[:8]
 }

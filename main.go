@@ -106,6 +106,30 @@ func main() {
 		return ctx.SendString(html.String())
 	})
 
+	app.Get("/share/:id", func(ctx *fiber.Ctx) error {
+		ctx.Set(fiber.HeaderContentType, "text/html")
+		shareId := ctx.Params("id")
+
+		var upload Upload
+		if err := DB.Where(&Upload{ShareLink: shareId}).First(&upload).Error; err != nil {
+			ctx.Status(fiber.StatusNotFound)
+			return ctx.SendString("<p>File not found</p>")
+		}
+
+		fileStream, err := getFileStream(s3Client, upload.FileKey)
+		if err != nil {
+			ctx.Status(fiber.StatusInternalServerError)
+			return ctx.SendString("<p>Error retrieving file</p>")
+		}
+		defer fileStream.Close()
+		
+		ctx.Set(fiber.HeaderContentType, "application/octet-stream")
+		ctx.Set(fiber.HeaderContentDisposition, fmt.Sprintf("attachment; filename=\"%s\"", upload.Filename))
+		ctx.Set(fiber.HeaderContentLength, fmt.Sprintf("%d", upload.FileSize))
+
+		return ctx.SendStream(fileStream)
+	})
+
 	app.Get("/health", func(ctx *fiber.Ctx) error {
 		cpuPercent, err := cpu.Percent(time.Second, false)
 		if err != nil {

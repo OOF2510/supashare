@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 
@@ -66,7 +67,7 @@ func UploadFile(ctx *fiber.Ctx, s3Client *s3.Client) error {
 		return fiber.NewError(fiber.StatusInternalServerError, fmt.Sprintf("<p>Failed to upload to Supabase: %v</p>", err))
 	}
 
-	shareLink := generateShareLink(file.Filename)
+	shareLink := generateShareLink()
 
 	uploadRecord := Upload{
 		UserID:    userId,
@@ -83,7 +84,16 @@ func UploadFile(ctx *fiber.Ctx, s3Client *s3.Client) error {
 	return ctx.SendString(fmt.Sprintf("<p>File %s uploaded successfully!</p>", file.Filename))
 }
 
-// Placeholder for share link generation
-func generateShareLink(filename string) string {
-	return fmt.Sprintf("https://supashare.oof2510.space/share/%s", filename)
+
+func getFileStream(s3Client *s3.Client, fileKey string) (io.ReadCloser, error) {
+	bucketName := os.Getenv("S3_BUCKET_NAME")
+	output, err := s3Client.GetObject(context.TODO(), &s3.GetObjectInput{
+		Bucket: aws.String(bucketName),
+		Key:    aws.String(fileKey),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get file stream: %w", err)
+	}
+
+	return output.Body, nil
 }
