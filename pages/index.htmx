@@ -150,16 +150,17 @@
                     </div>
                     <div class="level-right">
                         <div class="level-item">
-                            <button class="button is-primary" hx-get="/my-shares"
-                                hx-target="#shares-list">Refresh</button>
+                            <button class="button is-primary" hx-get="/my-shares" hx-target="#shares-list" hx-vals='js:{"user_id": getUserID()}'>
+                                Refresh
+                            </button>
                         </div>
                     </div>
                 </div>
 
-                <div id="shares-list">
-                    <div class="content has-text-centered py-6">
-                        <div style="font-size: 4rem; margin-bottom: 1rem; opacity: 0.5;">📂</div>
-                        <p>No shares yet. Upload files to create shares.</p>
+                <div id="shares-list" hx-get="/my-shares" hx-trigger="load" hx-vals='js:{"user_id": getUserID()}'>
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📂</div>
+                        <p>Loading...</p>
                     </div>
                 </div>
             </div>
