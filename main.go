@@ -60,7 +60,7 @@ func main() {
 		}
 
 		// upload to supabase storage
-		err = UploadFile(ctx, s3Client)
+		err = s3Client.UploadCtx(ctx)
 		if err != nil {
 			fmt.Println(fmt.Errorf("Error uploading file: %w", err))
 			ctx.Status(fiber.StatusInternalServerError)
@@ -131,7 +131,7 @@ func main() {
 			return ctx.SendString("<p>File not found</p>")
 		}
 
-		fileStream, err := getFileStream(s3Client, upload.FileKey)
+		fileStream, err := s3Client.getFileStream(upload.FileKey)
 		if err != nil {
 			ctx.Status(fiber.StatusInternalServerError)
 			ctx.Set(fiber.HeaderContentType, "text/html")

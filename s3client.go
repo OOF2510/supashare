@@ -15,7 +15,11 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func initS3() *s3.Client {
+type S3Client struct {
+	*s3.Client
+}
+
+func initS3() *S3Client {
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithRegion(os.Getenv("S3_REGION")),
 		config.WithCredentialsProvider(credentials.StaticCredentialsProvider{
@@ -36,10 +40,10 @@ func initS3() *s3.Client {
 		op.UsePathStyle = true
 	})
 
-	return client
+	return &S3Client{Client: client}
 }
 
-func UploadFile(ctx *fiber.Ctx, s3Client *s3.Client) error {
+func (s *S3Client) UploadCtx(ctx *fiber.Ctx) error {
 	userId := ctx.FormValue("user_id")
 	if userId == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "<p>User ID is required</p>")
@@ -70,7 +74,7 @@ func UploadFile(ctx *fiber.Ctx, s3Client *s3.Client) error {
 
 		objectKey := file.Filename
 
-		_, err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
+		_, err = s.Client.PutObject(context.TODO(), &s3.PutObjectInput{
 			Bucket: aws.String(bucketName),
 			Key:    aws.String(objectKey),
 			Body:   fileBuffer,
@@ -115,9 +119,9 @@ func UploadFile(ctx *fiber.Ctx, s3Client *s3.Client) error {
 	return ctx.SendString(fmt.Sprintf("<p>Files %s uploaded successfully!</p>", strings.Join(uploadedFilenames, ", ")))
 }
 
-func getFileStream(s3Client *s3.Client, fileKey string) (io.ReadCloser, error) {
+func (s *S3Client) getFileStream(fileKey string) (io.ReadCloser, error) {
 	bucketName := os.Getenv("S3_BUCKET_NAME")
-	output, err := s3Client.GetObject(context.TODO(), &s3.GetObjectInput{
+	output, err := s.Client.GetObject(context.TODO(), &s3.GetObjectInput{
 		Bucket: aws.String(bucketName),
 		Key:    aws.String(fileKey),
 	})
