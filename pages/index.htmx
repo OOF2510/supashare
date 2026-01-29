@@ -138,7 +138,7 @@
                         <h3 class="title is-4">Create Zip Archive</h3>
                         <p class="subtitle is-6">Combine multiple files into a single ZIP archive for easy sharing.</p>
 
-                        <form hx-post='/create-zip' hx-target='#zip-result'>
+                        <form hx-post='/create-zip' hx-target='#zip-result' hx-vals='js:{"user_id": getUserID()}'>
                             <div class="upload-area">
                                 <div style="font-size: 3rem; margin-bottom: 1rem;">🗄️</div>
                                 <p>Select files to zip</p>

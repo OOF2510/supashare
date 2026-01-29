@@ -1,9 +1,13 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -55,4 +59,33 @@ func generateShareLink() string {
 	}
 
 	return base64.URLEncoding.EncodeToString(bytes)[:8]
+}
+
+func createZip(files []*multipart.FileHeader) (*bytes.Buffer, error) {
+	buf := new(bytes.Buffer)
+	zipper := zip.NewWriter(buf)
+
+	for _, file := range files {
+		fileReader, err := file.Open()
+		if err != nil {
+			return nil, fmt.Errorf("Failed to open file %s: %w", file.Filename, err)
+		}
+		defer fileReader.Close()
+
+		zipFile, err := zipper.Create(file.Filename)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to create zip for %s: %w", file.Filename, err)
+		}
+
+		_, err = io.Copy(zipFile, fileReader)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to add file %s to zip: %w", file.Filename, err)
+		}
+	}
+
+	if err := zipper.Close(); err != nil {
+		return nil, fmt.Errorf("Failed to finalize zip: %w", err)
+	}
+
+	return buf, nil
 }

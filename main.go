@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -69,6 +73,67 @@ func main() {
 
 		fmt.Printf("File %s uploaded successfully\n", file.Filename)
 		return ctx.SendString(fmt.Sprintf("<p>File %s uploaded successfully!</p>", file.Filename))
+	})
+
+	app.Post("/create-zip", func(ctx *fiber.Ctx) error {
+		ctx.Set(fiber.HeaderContentType, "text/html")
+
+		userId := ctx.FormValue("user_id")
+		if userId == "" {
+			ctx.Status(fiber.StatusBadRequest)
+			return ctx.SendString("<p>Error: User ID is required</p>")
+		}
+
+		form, err := ctx.MultipartForm()
+		if err != nil {
+			ctx.Status(fiber.StatusBadRequest)
+			return ctx.SendString("<p>Error: Could not parse form data</p>")
+		}
+
+		files := form.File["zip-files"]
+		if len(files) == 0 {
+			ctx.Status(fiber.StatusBadRequest)
+			return ctx.SendString("<p>Error: No files selected</p>")
+		}
+
+		zipBuffer, err := createZip(files)
+		if err != nil {
+			fmt.Println(fmt.Errorf("Error creating zip: %w", err))
+			ctx.Status(fiber.StatusInternalServerError)
+			return ctx.SendString("<p>Error creating zip archive</p>")
+		}
+
+		zipFilename := fmt.Sprintf("archive_%d.zip", time.Now().Unix())
+
+		bucketName := os.Getenv("S3_BUCKET_NAME")
+		_, err = s3Client.Client.PutObject(context.TODO(), &s3.PutObjectInput{
+			Bucket: aws.String(bucketName),
+			Key:    aws.String(zipFilename),
+			Body:   bytes.NewReader(zipBuffer.Bytes()),
+		})
+		if err != nil {
+			fmt.Println(fmt.Errorf("Error uploading zip: %w", err))
+			ctx.Status(fiber.StatusInternalServerError)
+			return ctx.SendString("<p>Error uploading zip file</p>")
+		}
+
+		shareLink := generateShareLink()
+		uploadRecord := Upload{
+			UserID:    userId,
+			Filename:  zipFilename,
+			FileKey:   zipFilename,
+			FileSize:  int64(zipBuffer.Len()),
+			ShareLink: shareLink,
+		}
+
+		if err := DB.Create(&uploadRecord).Error; err != nil {
+			fmt.Println(fmt.Errorf("Error saving upload record: %w", err))
+			ctx.Status(fiber.StatusInternalServerError)
+			return ctx.SendString("<p>Error saving upload record</p>")
+		}
+
+		fmt.Printf("Zip file %s created and uploaded successfully\n", zipFilename)
+		return ctx.SendString(fmt.Sprintf("<p>Zip %s created successfully! (%d files)</p>", zipFilename, len(files)))
 	})
 
 	app.Get("/my-shares", func(ctx *fiber.Ctx) error {
