@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -39,49 +40,79 @@ func initS3() *s3.Client {
 }
 
 func UploadFile(ctx *fiber.Ctx, s3Client *s3.Client) error {
-	file, err := ctx.FormFile("file")
-	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "<p>No file uploaded</p>")
-	}
-
 	userId := ctx.FormValue("user_id")
 	if userId == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "<p>User ID is required</p>")
 	}
 
-	fileBuffer, err := file.Open()
+	form, err := ctx.MultipartForm()
 	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "<p>Could not create file buffer</p>")
+		return fiber.NewError(fiber.StatusBadRequest, "<p>Could not parse form data</p>")
 	}
-	defer fileBuffer.Close()
+
+	files := form.File["file"]
+	if len(files) == 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "<p>No files uploaded</p>")
+	}
 
 	bucketName := os.Getenv("S3_BUCKET_NAME")
-	objectKey := file.Filename
 
-	_, err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
-		Bucket: aws.String(bucketName),
-		Key:    aws.String(objectKey),
-		Body:   fileBuffer,
-	})
-	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, fmt.Sprintf("<p>Failed to upload to Supabase: %v</p>", err))
+	var successCount int
+	var failedFiles []string
+
+	for _, file := range files {
+
+		fileBuffer, err := file.Open()
+		if err != nil {
+			failedFiles = append(failedFiles, file.Filename)
+			continue
+		}
+
+		objectKey := file.Filename
+
+		_, err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
+			Bucket: aws.String(bucketName),
+			Key:    aws.String(objectKey),
+			Body:   fileBuffer,
+		})
+		if err != nil {
+			failedFiles = append(failedFiles, file.Filename)
+			continue
+		}
+		fileBuffer.Close()
+
+		shareLink := generateShareLink()
+
+		uploadRecord := Upload{
+			UserID:    userId,
+			Filename:  file.Filename,
+			FileKey:   objectKey,
+			FileSize:  file.Size,
+			ShareLink: shareLink,
+		}
+
+		if err := DB.Create(&uploadRecord).Error; err != nil {
+			failedFiles = append(failedFiles, file.Filename)
+			continue
+		}
+		successCount++
 	}
 
-	shareLink := generateShareLink()
-
-	uploadRecord := Upload{
-		UserID:    userId,
-		Filename:  file.Filename,
-		FileKey:   objectKey,
-		FileSize:  file.Size,
-		ShareLink: shareLink,
+	if successCount == 0 {
+		return fiber.NewError(fiber.StatusInternalServerError, "<p>All file uploads failed</p>")
 	}
 
-	if err := DB.Create(&uploadRecord).Error; err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "<p>Failed to save upload record to database</p>")
+	if len(failedFiles) > 0 {
+		return ctx.SendString(fmt.Sprintf("<p>%d files uploaded successfully. Failed to upload: %v</p>", successCount, failedFiles))
 	}
 
-	return ctx.SendString(fmt.Sprintf("<p>File %s uploaded successfully!</p>", file.Filename))
+	// get list of uploaded filenames
+	var uploadedFilenames []string
+	for _, file := range files {
+		uploadedFilenames = append(uploadedFilenames, file.Filename)
+	}
+
+	return ctx.SendString(fmt.Sprintf("<p>Files %s uploaded successfully!</p>", strings.Join(uploadedFilenames, ", ")))
 }
 
 func getFileStream(s3Client *s3.Client, fileKey string) (io.ReadCloser, error) {
