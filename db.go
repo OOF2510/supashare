@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"time"
+
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-	"os"
-	"time"
 )
 
 type Upload struct {
