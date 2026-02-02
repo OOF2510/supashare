@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -73,6 +74,13 @@ func (s *S3Client) UploadCtx(ctx *fiber.Ctx) error {
 		}
 
 		objectKey := file.Filename
+
+		if _, err := s.Client.HeadObject(context.TODO(), &s3.HeadObjectInput{
+			Bucket: aws.String(bucketName),
+			Key:    aws.String(objectKey),
+		}); err == nil {
+			objectKey = fmt.Sprintf("%d_%s", time.Now().Unix(), file.Filename)
+		}
 
 		_, err = s.Client.PutObject(context.TODO(), &s3.PutObjectInput{
 			Bucket: aws.String(bucketName),
