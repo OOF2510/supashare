@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -23,9 +24,20 @@ func initS3() *S3Client {
 	accessKey := os.Getenv("S3_ACCESS_KEY")
 	secretKey := os.Getenv("S3_SECRET_KEY")
 
-	client, err := minio.New(endpoint, &minio.Options{
+	parsedURL, err := url.Parse(endpoint)
+	if err != nil {
+		msg := fmt.Errorf("unable to parse endpoint URL %s: %v", endpoint, err)
+		log.Panic(msg)
+	}
+
+	hostEndpoint := parsedURL.Host
+	if hostEndpoint == "" {
+		hostEndpoint = endpoint
+	}
+
+	client, err := minio.New(hostEndpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
-		Secure: true,
+		Secure: parsedURL.Scheme == "https" || parsedURL.Scheme == "",
 	})
 	if err != nil {
 		msg := fmt.Errorf("unable to create Minio client: %v", err)
