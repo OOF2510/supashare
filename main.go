@@ -13,10 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
-	"github.com/shirou/gopsutil/v3/cpu"
-	"github.com/shirou/gopsutil/v3/host"
-	"github.com/shirou/gopsutil/v3/mem"
-	"github.com/shirou/gopsutil/v3/process"
 )
 
 var URL string
@@ -222,62 +218,13 @@ func main() {
 	})
 
 	app.Get("/health", func(ctx *fiber.Ctx) error {
-		cpuPercent, err := cpu.Percent(time.Second, false)
+		stats, err := getSystemStats()
 		if err != nil {
-			return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"ok":    false,
-				"error": "Could not retrieve CPU usage",
-			})
-		}
-		memStat, err := mem.VirtualMemory()
-		if err != nil {
-			return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"ok":    false,
-				"error": "Could not retrieve memory stats",
-			})
+			ctx.Status(fiber.StatusInternalServerError)
+			return ctx.JSON(stats)
 		}
 
-		pid := os.Getpid()
-		proc, err := process.NewProcess(int32(pid))
-		if err != nil {
-			return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"ok":    false,
-				"error": "Could not retrieve process info",
-			})
-		}
-		procMemInfo, err := proc.MemoryInfo()
-		if err != nil {
-			return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"ok":    false,
-				"error": "Could not retrieve process memory stats",
-			})
-		}
-
-		hostInfo, err := host.Info()
-		if err != nil {
-			return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"ok":    false,
-				"error": "Could not retrieve host info",
-			})
-		}
-
-		return ctx.JSON(fiber.Map{
-			"ok": true,
-			"system": fiber.Map{
-				"cpu": fiber.Map{
-					"usage": cpuPercent[0],
-				},
-				"memory": fiber.Map{
-					"systemTotal": formatBytes(memStat.Total),
-					"processUsed": formatBytes(procMemInfo.RSS),
-				},
-				"host": fiber.Map{
-					"os":       hostInfo.OS,
-					"platform": hostInfo.Platform,
-					"uptime":   hostInfo.Uptime,
-				},
-			},
-		})
+		return ctx.JSON(stats)
 	})
 
 	fmt.Printf("Starting server on %s\n", URL)

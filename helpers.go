@@ -8,9 +8,14 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"os"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/host"
+	"github.com/shirou/gopsutil/v3/mem"
+	"github.com/shirou/gopsutil/v3/process"
 )
 
 func formatBytes(bytes uint64) string {
@@ -88,4 +93,63 @@ func createZip(files []*multipart.FileHeader) (*bytes.Buffer, error) {
 	}
 
 	return buf, nil
+}
+
+func getSystemStats() (fiber.Map, error) {
+	cpuPercent, err := cpu.Percent(time.Second, false)
+	if err != nil {
+		return fiber.Map{
+			"ok":    false,
+			"error": "Could not retrieve CPU usage",
+		}, err
+	}
+	memStat, err := mem.VirtualMemory()
+	if err != nil {
+		return fiber.Map{
+			"ok":    false,
+			"error": "Could not retrieve memory stats",
+		}, err
+	}
+
+	pid := os.Getpid()
+	proc, err := process.NewProcess(int32(pid))
+	if err != nil {
+		return fiber.Map{
+			"ok":    false,
+			"error": "Could not retrieve process info",
+		}, err
+	}
+	procMemInfo, err := proc.MemoryInfo()
+	if err != nil {
+		return fiber.Map{
+			"ok":    false,
+			"error": "Could not retrieve process memory stats",
+		}, err
+	}
+
+	hostInfo, err := host.Info()
+	if err != nil {
+		return fiber.Map{
+			"ok":    false,
+			"error": "Could not retrieve host info",
+		}, err
+	}
+
+	return fiber.Map{
+		"ok": true,
+		"system": fiber.Map{
+			"cpu": fiber.Map{
+				"usage": cpuPercent[0],
+			},
+			"memory": fiber.Map{
+				"systemTotal": formatBytes(memStat.Total),
+				"processUsed": formatBytes(procMemInfo.RSS),
+			},
+			"host": fiber.Map{
+				"os":       hostInfo.OS,
+				"platform": hostInfo.Platform,
+				"uptime":   hostInfo.Uptime,
+			},
+		},
+	}, nil
 }
