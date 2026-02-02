@@ -138,15 +138,23 @@
                         <h3 class="title is-4">Create Zip Archive</h3>
                         <p class="subtitle is-6">Combine multiple files into a single ZIP archive for easy sharing.</p>
 
-                        <form hx-post='/create-zip' hx-target='#zip-result' hx-vals='js:{"user_id": getUserID()}'>
-                            <div class="upload-area">
+                        <form hx-post='/create-zip' hx-target='#zip-result' hx-encoding='multipart/form-data' hx-vals='js:{"user_id": getUserID()}'>
+                            <div class="upload-area" id="zip-area">
                                 <div style="font-size: 3rem; margin-bottom: 1rem;">🗄️</div>
                                 <p>Select files to zip</p>
                             </div>
                             <input type='file' name='zip-files' id='zip-input' class="file-input" multiple>
+                            
+                            <div id="zip-selected-files" class="file-list" style="display: none;">
+                                <div class="is-flex is-justify-content-space-between is-align-items-center mb-3">
+                                    <p class="mb-0 has-text-weight-semibold">Selected Files:</p>
+                                    <button type="button" class="button is-small is-light is-danger" id="clear-zip-files">Clear</button>
+                                </div>
+                                <div id="zip-files-container"></div>
+                                <div id="zip-result"></div>
+                            </div>
                             <button type="submit" class="button is-primary is-fullwidth mt-4">Create Zip</button>
                         </form>
-                        <div id="zip-result"></div>
                     </div>
                 </div>
 
@@ -382,8 +390,72 @@
         // Zip functionality
         const zipArea = document.querySelector('.card:nth-child(2) .upload-area');
         const zipInput = document.getElementById('zip-input');
+        const clearZipFilesBtn = document.getElementById('clear-zip-files');
 
         zipArea.addEventListener('click', () => zipInput.click());
+
+        function displayZipSelectedFiles() {
+            const filesContainer = document.getElementById('zip-files-container');
+            const selectedFilesDiv = document.getElementById('zip-selected-files');
+            filesContainer.innerHTML = '';
+
+            if (zipInput.files.length === 0) {
+                selectedFilesDiv.style.display = 'none';
+                return;
+            }
+
+            selectedFilesDiv.style.display = 'block';
+
+            for (let file of zipInput.files) {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'box mb-3';
+                fileItem.innerHTML = `
+                    <div class="is-flex is-justify-content-space-between is-align-items-center">
+                        <div class="is-flex is-align-items-center" style="gap: 1rem; flex: 1;">
+                            <div style="font-size: 1.5rem;">📄</div>
+                            <div style="flex: 1;">
+                                <div class="has-text-weight-semibold">${file.name}</div>
+                                <div class="has-text-grey is-size-7">${formatFileSize(file.size)}</div>
+                            </div>
+                        </div>
+                        <div class="is-flex" style="gap: 0.5rem;">
+                            <button type="button" class="button is-small is-ghost remove-zip-file" data-filename="${file.name}" title="Remove file">
+                                <span class="icon is-small">
+                                    <i class="fas fa-trash"></i>
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                filesContainer.appendChild(fileItem);
+            }
+
+            document.querySelectorAll('.remove-zip-file').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    removeZipFileFromInput(btn.dataset.filename);
+                });
+            });
+        }
+
+        function removeZipFileFromInput(filename) {
+            const dataTransfer = new DataTransfer();
+            for (let file of zipInput.files) {
+                if (file.name !== filename) {
+                    dataTransfer.items.add(file);
+                }
+            }
+            zipInput.files = dataTransfer.files;
+            displayZipSelectedFiles();
+        }
+
+        zipInput.addEventListener('change', displayZipSelectedFiles);
+
+        clearZipFilesBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            zipInput.value = '';
+            displayZipSelectedFiles();
+        });
 
         // Media functionality
         const mediaArea = document.querySelector('.card:nth-child(3) .upload-area');
