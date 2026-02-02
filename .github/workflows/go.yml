@@ -16,12 +16,30 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: "1.25.5"
+          cache: true
+
+      - name: Cache UPX
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/upx
+          key: ${{ runner.os }}-upx-v4
+          restore-keys: |
+            ${{ runner.os }}-upx-
 
       - name: Set short git commit SHA
         run: calculatedSha=$(git rev-parse --short ${{ github.sha }}) && echo "COMMIT_SHORT_SHA=$calculatedSha" >> $GITHUB_ENV
 
       - name: Build
         run: chmod +x ./build.bash && ./build.bash ${{ env.COMMIT_SHORT_SHA }}
+
+      - name: Install UPX
+        uses: crazy-max/ghaction-upx@v3
+        with:
+          install-only: true
+
+      - name: Compress Binary with UPX
+        run: upx --best --lzma ./dist/${{ env.COMMIT_SHORT_SHA }}/supashare-${{ env.COMMIT_SHORT_SHA }}.x86_64
 
       - name: Binary File Size
         run: ls -lh ./dist/${{ env.COMMIT_SHORT_SHA }}/supashare-${{ env.COMMIT_SHORT_SHA }}.x86_64
