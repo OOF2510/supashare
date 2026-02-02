@@ -158,35 +158,34 @@
                     </div>
                 </div>
 
-                <!-- Compress Media Card -->
-                <div class="card">
-                    <div class="card-content">
-                        <h3 class="title is-4">Compress Media</h3>
-                        <p class="subtitle is-6">Reduce file size of images and videos.</p>
+            <!-- Compress Media Card -->
+            <div class="card">
+                <div class="card-content">
+                    <h3 class="title is-4">Compress Media</h3>
+                    <p class="subtitle is-6">Reduce file size of images and videos.</p>
 
-                        <form hx-post='/compress-media' hx-target='#compress-result'>
-                            <div class="upload-area">
-                                <div style="font-size: 3rem; margin-bottom: 1rem;">📸</div>
-                                <p>Upload images or videos</p>
-                            </div>
-                            <input type='file' name='media-files' id='media-input' class="file-input"
-                                accept="image/*,video/*" multiple>
-                            <div class="field mt-4">
-                                <label class="label">Quality:</label>
-                                <div class="control">
-                                    <div class="select is-fullwidth">
-                                        <select name="quality">
-                                            <option value="high">High (Best Quality)</option>
-                                            <option value="medium" selected>Medium (Balanced)</option>
-                                            <option value="low">Low (Smallest Size)</option>
-                                        </select>
-                                    </div>
+                    <form hx-post='/compress-media' hx-target='#compress-result' hx-encoding='multipart/form-data' hx-vals='js:{"user_id": getUserID()}'>
+                        <div class="upload-area" id="media-area">
+                            <div style="font-size: 3rem; margin-bottom: 1rem;">📸</div>
+                            <p>Upload images or videos</p>
+                        </div>
+                        <input type='file' name='media-files' id='media-input' class="file-input"
+                            accept="image/*,video/*" multiple>
+                        <div class="field mt-4">
+                            <label class="label">Quality:</label>
+                            <div class="control">
+                                <div class="select is-fullwidth">
+                                    <select name="quality">
+                                        <option value="high">High (Best Quality)</option>
+                                        <option value="medium" selected>Medium (Balanced)</option>
+                                        <option value="low">Low (Smallest Size)</option>
+                                    </select>
                                 </div>
                             </div>
-                            <button type="submit" class="button is-primary is-fullwidth mt-4">Compress Media</button>
-                        </form>
-                        <div id="compress-result"></div>
-                    </div>
+                        </div>
+                        <button type="submit" class="button is-primary is-fullwidth mt-4">Compress Media</button>
+                        <div id="compress-result" class="mt-3"></div>
+                    </form>
                 </div>
             </div>
 

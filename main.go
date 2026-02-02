@@ -132,9 +132,18 @@ func main() {
 		fmt.Printf("Zip file %s created and uploaded successfully\n", zipFilename)
 		return ctx.SendString(fmt.Sprintf("<p>Zip %s created successfully! (%d files)</p>", zipFilename, len(files)))
 	})
-
+	
 	app.Post("/compress-media", func(ctx *fiber.Ctx) error {
 		ctx.Set(fiber.HeaderContentType, "text/html")
+
+		userId := ctx.FormValue("user_id")
+		if userId == "" {
+			ctx.Status(fiber.StatusBadRequest)
+			return ctx.SendString("<p>Error: User ID is required</p>")
+		}
+
+		qualityStr := ctx.FormValue("quality")
+		quality := getCompressionQuality(qualityStr)
 
 		mediaFiles, err := ctx.MultipartForm()
 		if err != nil {
@@ -148,31 +157,125 @@ func main() {
 			return ctx.SendString("<p>Error: No media files selected</p>")
 		}
 
-		// check if image or video files
-		var validFiles []*multipart.FileHeader
-		for _, file := range files {
-			if strings.HasPrefix(file.Header.Get("Content-Type"), "image/") || strings.HasPrefix(file.Header.Get("Content-Type"), "video/") {
-				validFiles = append(validFiles, file)
-			}
-		}
-		if len(validFiles) == 0 {
-			ctx.Status(fiber.StatusBadRequest)
-			return ctx.SendString("<p>Error: No valid image or video files selected</p>")
-		}
-
 		var videoFiles []*multipart.FileHeader
 		var imageFiles []*multipart.FileHeader
-		for _, file := range validFiles {
-			if strings.HasPrefix(file.Header.Get("Content-Type"), "video/") {
+
+		for _, file := range files {
+			contentType := file.Header.Get("Content-Type")
+			if strings.HasPrefix(contentType, "video/") {
 				videoFiles = append(videoFiles, file)
-			} else if strings.HasPrefix(file.Header.Get("Content-Type"), "image/") {
+			} else if strings.HasPrefix(contentType, "image/") {
 				imageFiles = append(imageFiles, file)
 			}
 		}
 
-		fmt.Printf("Received %d videos and %d images for compression\n", len(videoFiles), len(imageFiles))
+		if len(videoFiles) == 0 && len(imageFiles) == 0 {
+			ctx.Status(fiber.StatusBadRequest)
+			return ctx.SendString("<p>Error: No valid image or video files selected</p>")
+		}
 
-		return ctx.SendString(fmt.Sprintf("<p>Received %d videos and %d images for compression (work in progress)</p>", len(videoFiles), len(imageFiles)))
+		bucketName := os.Getenv("S3_BUCKET_NAME")
+		var successCount int
+		var failedFiles []string
+
+		for _, file := range imageFiles {
+			compressed, err := compressImage(file, quality)
+			if err != nil {
+				fmt.Printf("Error compressing image %s: %v\n", file.Filename, err)
+				failedFiles = append(failedFiles, file.Filename)
+				continue
+			}
+
+			compressedFilename := getCompressedFileName(file.Filename, false)
+
+			_, err = s3Client.Client.PutObject(context.TODO(), &s3.PutObjectInput{
+				Bucket: aws.String(bucketName),
+				Key:    aws.String(compressedFilename),
+				Body:   bytes.NewReader(compressed.Bytes()),
+			})
+			if err != nil {
+				fmt.Printf("Error uploading compressed image %s: %v\n", file.Filename, err)
+				failedFiles = append(failedFiles, file.Filename)
+				continue
+			}
+
+			shareLink := generateShareLink()
+			uploadRecord := Upload{
+				UserID:    userId,
+				Filename:  compressedFilename,
+				FileKey:   compressedFilename,
+				FileSize:  int64(compressed.Len()),
+				ShareLink: shareLink,
+			}
+
+			if err := DB.Create(&uploadRecord).Error; err != nil {
+				fmt.Printf("Error saving upload record for %s: %v\n", file.Filename, err)
+				failedFiles = append(failedFiles, file.Filename)
+				continue
+			}
+
+			successCount++
+			fmt.Printf("Image %s compressed: %s -> %s (%.1f%% reduction)\n",
+				file.Filename,
+				formatBytes(uint64(file.Size)),
+				formatBytes(uint64(compressed.Len())),
+				(1-float64(compressed.Len())/float64(file.Size))*100)
+		}
+
+		for _, file := range videoFiles {
+			compressed, err := compressVideo(file, quality)
+			if err != nil {
+				fmt.Printf("Error compressing video %s: %v\n", file.Filename, err)
+				failedFiles = append(failedFiles, file.Filename)
+				continue
+			}
+
+			compressedFilename := getCompressedFileName(file.Filename, true)
+
+			_, err = s3Client.Client.PutObject(context.TODO(), &s3.PutObjectInput{
+				Bucket: aws.String(bucketName),
+				Key:    aws.String(compressedFilename),
+				Body:   bytes.NewReader(compressed.Bytes()),
+			})
+			if err != nil {
+				fmt.Printf("Error uploading compressed video %s: %v\n", file.Filename, err)
+				failedFiles = append(failedFiles, file.Filename)
+				continue
+			}
+
+			shareLink := generateShareLink()
+			uploadRecord := Upload{
+				UserID:    userId,
+				Filename:  compressedFilename,
+				FileKey:   compressedFilename,
+				FileSize:  int64(compressed.Len()),
+				ShareLink: shareLink,
+			}
+
+			if err := DB.Create(&uploadRecord).Error; err != nil {
+				fmt.Printf("Error saving upload record for %s: %v\n", file.Filename, err)
+				failedFiles = append(failedFiles, file.Filename)
+				continue
+			}
+
+			successCount++
+			fmt.Printf("Video %s compressed: %s -> %s (%.1f%% reduction)\n",
+				file.Filename,
+				formatBytes(uint64(file.Size)),
+				formatBytes(uint64(compressed.Len())),
+				(1-float64(compressed.Len())/float64(file.Size))*100)
+		}
+
+		if successCount == 0 {
+			ctx.Status(fiber.StatusInternalServerError)
+			return ctx.SendString("<p>All media compression failed</p>")
+		}
+
+		if len(failedFiles) > 0 {
+			return ctx.SendString(fmt.Sprintf("<p> %d files compressed successfully. Failed: %v</p>", successCount, failedFiles))
+		}
+
+		return ctx.SendString(fmt.Sprintf("<p>Successfully compressed %d files!</p>", successCount))
 	})
 
 	app.Get("/my-shares", func(ctx *fiber.Ctx) error {
