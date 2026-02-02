@@ -132,7 +132,7 @@ func main() {
 		fmt.Printf("Zip file %s created and uploaded successfully\n", zipFilename)
 		return ctx.SendString(fmt.Sprintf("<p>Zip %s created successfully! (%d files)</p>", zipFilename, len(files)))
 	})
-	
+
 	app.Post("/compress-media", func(ctx *fiber.Ctx) error {
 		ctx.Set(fiber.HeaderContentType, "text/html")
 

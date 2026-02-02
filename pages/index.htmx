@@ -8,6 +8,8 @@
         integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz"
         crossorigin="anonymous"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
+    <link href="https://vjs.zencdn.net/8.23.4/video-js.min.css" rel="stylesheet">
+    <script src="https://vjs.zencdn.net/8.23.4/video.min.js"></script>
     <title>Supashare - File Sharing</title>
     <style>
         .upload-area {
@@ -91,6 +93,28 @@
                 opacity: 0;
             }
         }
+
+        /* Preview containers */
+        .preview-container {
+            border: 1px solid #dbdbdb;
+            border-radius: 4px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            background-color: #fafafa;
+        }
+
+        .image-preview {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 4px;
+            object-fit: cover;
+        }
+
+        .video-preview {
+            width: 100%;
+            max-width: 100%;
+            border-radius: 4px;
+        }
     </style>
 </head>
 
@@ -171,6 +195,15 @@
                         </div>
                         <input type='file' name='media-files' id='media-input' class="file-input"
                             accept="image/*,video/*" multiple>
+                        
+                        <div id="media-previews" style="display: none; margin-top: 1.5rem;">
+                            <div class="is-flex is-justify-content-space-between is-align-items-center mb-3">
+                                <p class="mb-0 has-text-weight-semibold">Selected Media:</p>
+                                <button type="button" class="button is-small is-light is-danger" id="clear-media">Clear</button>
+                            </div>
+                            <div id="media-container"></div>
+                        </div>
+                        
                         <div class="field mt-4">
                             <label class="label">Quality:</label>
                             <div class="control">
@@ -187,6 +220,7 @@
                         <div id="compress-result" class="mt-3"></div>
                     </form>
                 </div>
+            </div>
             </div>
 
             <!-- My Shares Section -->
@@ -220,6 +254,13 @@
     <div id="toast-container"></div>
 
     <script>
+
+        document.body.addEventListener('htmx:beforeSwap', (evt) => {
+            if(evt.detail.xhr.status === 400 || evt.detail.xhr.status === 500) {
+                evt.detail.shouldSwap = true;
+                evt.detail.isError = false;
+            }
+        });
 
         // Toast notification function
         function showToast(message, type = 'success') {
@@ -384,6 +425,12 @@
             const progressBar = htmx.find('#upload-progress');
             progressContainer.style.display = 'none';
             progressBar.setAttribute('value', '0');
+            
+            // Clear files on successful upload
+            if (evt.detail.xhr.status === 200) {
+                fileInput.value = '';
+                displaySelectedFiles();
+            }
         });
 
         // Zip functionality
@@ -456,11 +503,126 @@
             displayZipSelectedFiles();
         });
 
+        // Clear zip files on successful compression
+        htmx.on('form[hx-post="/create-zip"]', 'htmx:afterRequest', function(evt) {
+            if (evt.detail.xhr.status === 200) {
+                zipInput.value = '';
+                displayZipSelectedFiles();
+            }
+        });
+
         // Media functionality
         const mediaArea = document.querySelector('.card:nth-child(3) .upload-area');
         const mediaInput = document.getElementById('media-input');
+        const clearMediaBtn = document.getElementById('clear-media');
 
         mediaArea.addEventListener('click', () => mediaInput.click());
+
+        function displayMediaPreviews() {
+            const container = document.getElementById('media-container');
+            const previewsDiv = document.getElementById('media-previews');
+            container.innerHTML = '';
+
+            if (mediaInput.files.length === 0) {
+                previewsDiv.style.display = 'none';
+                return;
+            }
+
+            previewsDiv.style.display = 'block';
+
+            for (let file of mediaInput.files) {
+                const isVideo = file.type.startsWith('video/');
+                const isImage = file.type.startsWith('image/');
+                const previewDiv = document.createElement('div');
+                previewDiv.className = 'preview-container';
+
+                if (isImage) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        previewDiv.innerHTML = `
+                            <div class="mb-2">
+                                <img src="${e.target.result}" alt="${file.name}" class="image-preview">
+                            </div>
+                            <div class="has-text-weight-semibold">${file.name}</div>
+                            <div class="has-text-grey is-size-7">${formatFileSize(file.size)}</div>
+                        `;
+                    };
+                    reader.readAsDataURL(file);
+                } else if (isVideo) {
+                    const videoId = 'video-' + Math.random().toString(36).substr(2, 9);
+                    const videoUrl = URL.createObjectURL(file);
+                    previewDiv.innerHTML = `
+                        <div class="mb-2">
+                            <video 
+                                id="${videoId}"
+                                class="video-js vjs-default-skin video-preview"
+                                controls
+                                preload="metadata"
+                                width="100%"
+                                height="auto">
+                                <source src="${videoUrl}" type="${file.type}">
+                                Your browser does not support HTML5 video.
+                            </video>
+                        </div>
+                        <div class="has-text-weight-semibold">${file.name}</div>
+                        <div class="has-text-grey is-size-7">${formatFileSize(file.size)}</div>
+                    `;
+                    container.appendChild(previewDiv);
+                    // Initialize Video.js player after DOM element is added
+                    setTimeout(() => {
+                        const videoElement = document.getElementById(videoId);
+                        if (videoElement && !videojs.getPlayer(videoId)) {
+                            videojs(videoId, {
+                                controls: true,
+                                autoplay: false,
+                                preload: 'metadata',
+                                fluid: true
+                            });
+                        }
+                    }, 0);
+                    return;
+                } else {
+                    previewDiv.innerHTML = `
+                        <div style="font-size: 2rem; margin-bottom: 0.5rem;">📄</div>
+                        <div class="has-text-weight-semibold">${file.name}</div>
+                        <div class="has-text-grey is-size-7">${formatFileSize(file.size)}</div>
+                    `;
+                }
+
+                container.appendChild(previewDiv);
+            }
+        }
+
+        mediaInput.addEventListener('change', displayMediaPreviews);
+
+        clearMediaBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            mediaInput.value = '';
+            displayMediaPreviews();
+        });
+
+        mediaArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            mediaArea.classList.add('dragover');
+        });
+
+        mediaArea.addEventListener('dragleave', () => {
+            mediaArea.classList.remove('dragover');
+        });
+
+        mediaArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            mediaArea.classList.remove('dragover');
+            mediaInput.files = e.dataTransfer.files;
+            displayMediaPreviews();
+        });
+
+        // Clear media on successful upload
+        htmx.on('#compress-result', 'htmx:afterSwap', function() {
+            mediaInput.value = '';
+            displayMediaPreviews();
+            showToast('Media compressed successfully!', 'success');
+        });
     </script>
 </body>
 
