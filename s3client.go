@@ -9,37 +9,37 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gofiber/fiber/v2"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 type S3Client struct {
-	*s3.Client
+	*minio.Client
 }
 
 func initS3() *S3Client {
-	cfg, err := config.LoadDefaultConfig(context.TODO(),
-		config.WithRegion(os.Getenv("S3_REGION")),
-		config.WithCredentialsProvider(credentials.StaticCredentialsProvider{
-			Value: aws.Credentials{
-				AccessKeyID:     os.Getenv("S3_ACCESS_KEY"),
-				SecretAccessKey: os.Getenv("S3_SECRET_KEY"),
-				Source:          "StaticCredentials",
-			},
-		}),
-	)
+	endpoint := os.Getenv("S3_STORAGE_ENDPOINT")
+	accessKey := os.Getenv("S3_ACCESS_KEY")
+	secretKey := os.Getenv("S3_SECRET_KEY")
+
+	client, err := minio.New(endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
+		Secure: true,
+	})
 	if err != nil {
-		msg := fmt.Errorf("unable to load SDK config, %v", err)
+		msg := fmt.Errorf("unable to create Minio client: %v", err)
 		log.Panic(msg)
 	}
 
-	client := s3.NewFromConfig(cfg, func(op *s3.Options) {
-		op.BaseEndpoint = aws.String(os.Getenv("S3_STORAGE_ENDPOINT"))
-		op.UsePathStyle = true
-	})
+	bucketName := os.Getenv("S3_BUCKET_NAME")
+	ctx := context.Background()
+	exists, err := client.BucketExists(ctx, bucketName)
+	if err != nil {
+		log.Printf("Warning: failed to check bucket existence: %v", err)
+	} else if !exists {
+		log.Printf("Bucket %s does not exist", bucketName)
+	}
 
 	return &S3Client{Client: client}
 }
@@ -47,11 +47,7 @@ func initS3() *S3Client {
 func (s *S3Client) UploadFile(userId, filename string, data io.Reader, fileSize int64) (string, error) {
 	bucketName := os.Getenv("S3_BUCKET_NAME")
 
-	_, err := s.Client.PutObject(context.TODO(), &s3.PutObjectInput{
-		Bucket: aws.String(bucketName),
-		Key:    aws.String(filename),
-		Body:   data,
-	})
+	_, err := s.Client.PutObject(context.TODO(), bucketName, filename, data, fileSize, minio.PutObjectOptions{})
 	if err != nil {
 		return "", fmt.Errorf("error uploading file: %w", err)
 	}
@@ -103,18 +99,13 @@ func (s *S3Client) UploadCtx(ctx *fiber.Ctx) error {
 
 		objectKey := file.Filename
 
-		if _, err := s.Client.HeadObject(context.TODO(), &s3.HeadObjectInput{
-			Bucket: aws.String(bucketName),
-			Key:    aws.String(objectKey),
-		}); err == nil {
+		// Check if object already exists
+		_, errStat := s.Client.StatObject(context.TODO(), bucketName, objectKey, minio.StatObjectOptions{})
+		if errStat == nil {
 			objectKey = fmt.Sprintf("%d_%s", time.Now().Unix(), file.Filename)
 		}
 
-		_, err = s.Client.PutObject(context.TODO(), &s3.PutObjectInput{
-			Bucket: aws.String(bucketName),
-			Key:    aws.String(objectKey),
-			Body:   fileBuffer,
-		})
+		_, err = s.Client.PutObject(context.TODO(), bucketName, objectKey, fileBuffer, file.Size, minio.PutObjectOptions{})
 		if err != nil {
 			failedFiles = append(failedFiles, file.Filename)
 			continue
@@ -157,13 +148,10 @@ func (s *S3Client) UploadCtx(ctx *fiber.Ctx) error {
 
 func (s *S3Client) getFileStream(fileKey string) (io.ReadCloser, error) {
 	bucketName := os.Getenv("S3_BUCKET_NAME")
-	output, err := s.Client.GetObject(context.TODO(), &s3.GetObjectInput{
-		Bucket: aws.String(bucketName),
-		Key:    aws.String(fileKey),
-	})
+	output, err := s.Client.GetObject(context.TODO(), bucketName, fileKey, minio.GetObjectOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get file stream: %w", err)
+		return nil, fmt.Errorf("failed to get file stream: %w", err)
 	}
 
-	return output.Body, nil
+	return output, nil
 }

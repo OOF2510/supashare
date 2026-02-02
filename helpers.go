@@ -10,6 +10,7 @@ import (
 	"io"
 	"mime/multipart"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -20,7 +21,6 @@ import (
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/process"
-	ffmpeg "github.com/u2takey/ffmpeg-go"
 )
 
 func formatBytes(bytes uint64) string {
@@ -265,20 +265,27 @@ func compressVideo(file *multipart.FileHeader, quality CompressionQuality) (*byt
 
 	outputBuf := new(bytes.Buffer)
 
-	err = ffmpeg.Input("pipe:", ffmpeg.KwArgs{"format": getVideoFormat(file.Filename)}).
-		Output("pipe:", ffmpeg.KwArgs{
-			"c:v":      "libx264",
-			"crf":      crf,
-			"preset":   "medium",
-			"c:a":      "aac",
-			"b:a":      "128k",
-			"movflags": "+faststart",
-			"f":        "mp4",
-		}).
-		WithInput(bytes.NewReader(inputBuf.Bytes())).
-		WithOutput(outputBuf).
-		Run()
+	inputFormat := getVideoFormat(file.Filename)
 
+	// Create ffmpeg command
+	cmd := exec.Command("ffmpeg",
+		"-f", inputFormat,
+		"-i", "pipe:0", // input from stdin
+		"-c:v", "libx264",
+		"-crf", crf,
+		"-preset", "medium",
+		"-c:a", "aac",
+		"-b:a", "128k",
+		"-movflags", "+faststart",
+		"-f", "mp4",
+		"pipe:1", // output to stdout
+	)
+
+	cmd.Stdin = bytes.NewReader(inputBuf.Bytes())
+	cmd.Stdout = outputBuf
+	cmd.Stderr = os.Stderr
+
+	err = cmd.Run()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to compress video: %w", err)
 	}
