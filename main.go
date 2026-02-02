@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"os"
 	"strings"
 	"time"
@@ -130,6 +131,48 @@ func main() {
 
 		fmt.Printf("Zip file %s created and uploaded successfully\n", zipFilename)
 		return ctx.SendString(fmt.Sprintf("<p>Zip %s created successfully! (%d files)</p>", zipFilename, len(files)))
+	})
+
+	app.Post("/compress-media", func(ctx *fiber.Ctx) error {
+		ctx.Set(fiber.HeaderContentType, "text/html")
+
+		mediaFiles, err := ctx.MultipartForm()
+		if err != nil {
+			ctx.Status(fiber.StatusBadRequest)
+			return ctx.SendString("<p>Error: Could not parse form data</p>")
+		}
+
+		files := mediaFiles.File["media-files"]
+		if len(files) == 0 {
+			ctx.Status(fiber.StatusBadRequest)
+			return ctx.SendString("<p>Error: No media files selected</p>")
+		}
+
+		// check if image or video files
+		var validFiles []*multipart.FileHeader
+		for _, file := range files {
+			if strings.HasPrefix(file.Header.Get("Content-Type"), "image/") || strings.HasPrefix(file.Header.Get("Content-Type"), "video/") {
+				validFiles = append(validFiles, file)
+			}
+		}
+		if len(validFiles) == 0 {
+			ctx.Status(fiber.StatusBadRequest)
+			return ctx.SendString("<p>Error: No valid image or video files selected</p>")
+		}
+
+		var videoFiles []*multipart.FileHeader
+		var imageFiles []*multipart.FileHeader
+		for _, file := range validFiles {
+			if strings.HasPrefix(file.Header.Get("Content-Type"), "video/") {
+				videoFiles = append(videoFiles, file)
+			} else if strings.HasPrefix(file.Header.Get("Content-Type"), "image/") {
+				imageFiles = append(imageFiles, file)
+			}
+		}
+
+		fmt.Printf("Received %d videos and %d images for compression\n", len(videoFiles), len(imageFiles))
+
+		return ctx.SendString(fmt.Sprintf("<p>Received %d videos and %d images for compression (work in progress)</p>", len(videoFiles), len(imageFiles)))
 	})
 
 	app.Get("/my-shares", func(ctx *fiber.Ctx) error {

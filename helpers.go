@@ -6,16 +6,21 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"image/jpeg"
 	"io"
 	"mime/multipart"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/disintegration/imaging"
 	"github.com/gofiber/fiber/v2"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/process"
+	ffmpeg "github.com/u2takey/ffmpeg-go"
 )
 
 func formatBytes(bytes uint64) string {
@@ -152,4 +157,165 @@ func getSystemStats() (fiber.Map, error) {
 			},
 		},
 	}, nil
+}
+
+type CompressionQuality int
+
+const (
+	QualityHigh CompressionQuality = iota
+	QualityMedium
+	QualityLow
+)
+
+func getCompressionQuality(qualityStr string) CompressionQuality {
+	switch qualityStr {
+	case "high":
+		return QualityHigh
+	case "medium":
+		return QualityMedium
+	case "low":
+		return QualityLow
+	default:
+		return QualityMedium
+	}
+}
+
+func compressImage(file *multipart.FileHeader, quality CompressionQuality) (*bytes.Buffer, error) {
+	srcFile, err := file.Open()
+	if err != nil {
+		return nil, fmt.Errorf("Failed to open image file: %w", err)
+	}
+	defer srcFile.Close()
+
+	img, err := imaging.Decode(srcFile)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to decode image: %w", err)
+	}
+
+	bounds := img.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+
+	maxDimension := 2048
+	switch quality {
+	case QualityMedium:
+		maxDimension = 1600
+	case QualityLow:
+		maxDimension = 1200
+	}
+
+	if width > maxDimension || height > maxDimension {
+		img = imaging.Fit(img, maxDimension, maxDimension, imaging.Lanczos)
+	}
+
+	buf := new(bytes.Buffer)
+
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+
+	if ext == ".png" {
+		// lossless compression, convert to jpeg for better compression
+		jpegQuality := 85
+		switch quality {
+		case QualityMedium:
+			jpegQuality = 75
+		case QualityLow:
+			jpegQuality = 60
+		}
+
+		err = jpeg.Encode(buf, img, &jpeg.Options{Quality: jpegQuality})
+	} else {
+		// JPEG compression
+		jpegQuality := 90
+		switch quality {
+		case QualityMedium:
+			jpegQuality = 80
+		case QualityLow:
+			jpegQuality = 65
+		}
+
+		err = jpeg.Encode(buf, img, &jpeg.Options{Quality: jpegQuality})
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode image: %w", err)
+	}
+
+	return buf, nil
+}
+
+func compressVideo(file *multipart.FileHeader, quality CompressionQuality) (*bytes.Buffer, error) {
+	srcFile, err := file.Open()
+	if err != nil {
+		return nil, fmt.Errorf("Failed to open video file: %w", err)
+	}
+	defer srcFile.Close()
+
+	inputBuf := new(bytes.Buffer)
+	if _, err := inputBuf.ReadFrom(srcFile); err != nil {
+		return nil, fmt.Errorf("Failed to read video file: %w", err)
+	}
+
+	crf := "28"
+	switch quality {
+	case QualityHigh:
+		crf = "23"
+	case QualityLow:
+		crf = "32"
+	}
+
+	outputBuf := new(bytes.Buffer)
+
+	err = ffmpeg.Input("pipe:", ffmpeg.KwArgs{"format": getVideoFormat(file.Filename)}).
+		Output("pipe:", ffmpeg.KwArgs{
+			"c:v":      "libx264",
+			"crf":      crf,
+			"preset":   "medium",
+			"c:a":      "aac",
+			"b:a":      "128k",
+			"movflags": "+faststart",
+			"f":        "mp4",
+		}).
+		WithInput(bytes.NewReader(inputBuf.Bytes())).
+		WithOutput(outputBuf).
+		Run()
+
+	if err != nil {
+		return nil, fmt.Errorf("Failed to compress video: %w", err)
+	}
+
+	return outputBuf, nil
+}
+
+func getVideoFormat(filename string) string {
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
+	case ".mp4":
+		return "mp4"
+	case ".mov":
+		return "mov"
+	case ".avi":
+		return "avi"
+	case ".mkv":
+		return "matroska"
+	case ".webm":
+		return "webm"
+	default:
+		return "mp4"
+	}
+}
+
+func getCompressedFileName(original string, isVideo bool) string {
+	ext := filepath.Ext(original)
+	name := strings.TrimSuffix(original, ext)
+
+	if isVideo {
+		return fmt.Sprintf("%s_compressed%s", name, ext)
+	}
+
+	// Convert PNGs to JPEG for better compression
+	if strings.ToLower(ext) == ".png" {
+		return fmt.Sprintf("%s_compressed.jpg", name)
+	}
+
+	return fmt.Sprintf("%s_compressed%s", name, ext)
 }
