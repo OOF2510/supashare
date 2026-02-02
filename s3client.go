@@ -44,6 +44,34 @@ func initS3() *S3Client {
 	return &S3Client{Client: client}
 }
 
+func (s *S3Client) UploadFile(userId, filename string, data io.Reader, fileSize int64) (string, error) {
+	bucketName := os.Getenv("S3_BUCKET_NAME")
+
+	_, err := s.Client.PutObject(context.TODO(), &s3.PutObjectInput{
+		Bucket: aws.String(bucketName),
+		Key:    aws.String(filename),
+		Body:   data,
+	})
+	if err != nil {
+		return "", fmt.Errorf("error uploading file: %w", err)
+	}
+
+	shareLink := generateShareLink()
+	uploadRecord := Upload{
+		UserID:    userId,
+		Filename:  filename,
+		FileKey:   filename,
+		FileSize:  fileSize,
+		ShareLink: shareLink,
+	}
+
+	if err := DB.Create(&uploadRecord).Error; err != nil {
+		return "", fmt.Errorf("error saving upload record: %w", err)
+	}
+
+	return shareLink, nil
+}
+
 func (s *S3Client) UploadCtx(ctx *fiber.Ctx) error {
 	userId := ctx.FormValue("user_id")
 	if userId == "" {

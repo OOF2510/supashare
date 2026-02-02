@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -10,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
 )
@@ -102,31 +99,11 @@ func main() {
 
 		zipFilename := fmt.Sprintf("archive_%d.zip", time.Now().Unix())
 
-		bucketName := os.Getenv("S3_BUCKET_NAME")
-		_, err = s3Client.Client.PutObject(context.TODO(), &s3.PutObjectInput{
-			Bucket: aws.String(bucketName),
-			Key:    aws.String(zipFilename),
-			Body:   bytes.NewReader(zipBuffer.Bytes()),
-		})
+		_, err = s3Client.UploadFile(userId, zipFilename, bytes.NewReader(zipBuffer.Bytes()), int64(zipBuffer.Len()))
 		if err != nil {
 			fmt.Println(fmt.Errorf("Error uploading zip: %w", err))
 			ctx.Status(fiber.StatusInternalServerError)
-			return ctx.SendString("<p>Error uploading zip file</p>")
-		}
-
-		shareLink := generateShareLink()
-		uploadRecord := Upload{
-			UserID:    userId,
-			Filename:  zipFilename,
-			FileKey:   zipFilename,
-			FileSize:  int64(zipBuffer.Len()),
-			ShareLink: shareLink,
-		}
-
-		if err := DB.Create(&uploadRecord).Error; err != nil {
-			fmt.Println(fmt.Errorf("Error saving upload record: %w", err))
-			ctx.Status(fiber.StatusInternalServerError)
-			return ctx.SendString("<p>Error saving upload record</p>")
+			return ctx.SendString(fmt.Sprintf("<p>Error uploading zip file: %v</p>", err))
 		}
 
 		fmt.Printf("Zip file %s created and uploaded successfully\n", zipFilename)
@@ -174,7 +151,6 @@ func main() {
 			return ctx.SendString("<p>Error: No valid image or video files selected</p>")
 		}
 
-		bucketName := os.Getenv("S3_BUCKET_NAME")
 		var successCount int
 		var failedFiles []string
 
@@ -188,28 +164,9 @@ func main() {
 
 			compressedFilename := getCompressedFileName(file.Filename, false)
 
-			_, err = s3Client.Client.PutObject(context.TODO(), &s3.PutObjectInput{
-				Bucket: aws.String(bucketName),
-				Key:    aws.String(compressedFilename),
-				Body:   bytes.NewReader(compressed.Bytes()),
-			})
+			_, err = s3Client.UploadFile(userId, compressedFilename, bytes.NewReader(compressed.Bytes()), int64(compressed.Len()))
 			if err != nil {
 				fmt.Printf("Error uploading compressed image %s: %v\n", file.Filename, err)
-				failedFiles = append(failedFiles, file.Filename)
-				continue
-			}
-
-			shareLink := generateShareLink()
-			uploadRecord := Upload{
-				UserID:    userId,
-				Filename:  compressedFilename,
-				FileKey:   compressedFilename,
-				FileSize:  int64(compressed.Len()),
-				ShareLink: shareLink,
-			}
-
-			if err := DB.Create(&uploadRecord).Error; err != nil {
-				fmt.Printf("Error saving upload record for %s: %v\n", file.Filename, err)
 				failedFiles = append(failedFiles, file.Filename)
 				continue
 			}
@@ -232,28 +189,9 @@ func main() {
 
 			compressedFilename := getCompressedFileName(file.Filename, true)
 
-			_, err = s3Client.Client.PutObject(context.TODO(), &s3.PutObjectInput{
-				Bucket: aws.String(bucketName),
-				Key:    aws.String(compressedFilename),
-				Body:   bytes.NewReader(compressed.Bytes()),
-			})
+			_, err = s3Client.UploadFile(userId, compressedFilename, bytes.NewReader(compressed.Bytes()), int64(compressed.Len()))
 			if err != nil {
 				fmt.Printf("Error uploading compressed video %s: %v\n", file.Filename, err)
-				failedFiles = append(failedFiles, file.Filename)
-				continue
-			}
-
-			shareLink := generateShareLink()
-			uploadRecord := Upload{
-				UserID:    userId,
-				Filename:  compressedFilename,
-				FileKey:   compressedFilename,
-				FileSize:  int64(compressed.Len()),
-				ShareLink: shareLink,
-			}
-
-			if err := DB.Create(&uploadRecord).Error; err != nil {
-				fmt.Printf("Error saving upload record for %s: %v\n", file.Filename, err)
 				failedFiles = append(failedFiles, file.Filename)
 				continue
 			}
