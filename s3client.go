@@ -31,7 +31,7 @@ func initS3() *S3Client {
 		}).Panic("unable to parse endpoint URL")
 	}
 
-	hostEndpoint := parsedURL.Host
+	hostEndpoint := parsedURL.Host + parsedURL.Path
 	if hostEndpoint == "" {
 		hostEndpoint = endpoint
 	}
