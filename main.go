@@ -14,6 +14,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 )
 
@@ -31,7 +32,6 @@ var activeUploads = make(map[string]*ChunkedUpload)
 var uploadsMu sync.Mutex
 
 func main() {
-	// Initialize logger first
 	initLogger()
 
 	err := godotenv.Load()
@@ -56,8 +56,10 @@ func main() {
 		appLogger.WithError(err).Fatal("Database initialization failed")
 	}
 
+	redisClient := initRedis()
+
 	app := fiber.New(fiber.Config{
-		BodyLimit: 8 * 1024 * 1024,
+		BodyLimit: 8 * 1024 * 1024, // 8 MB
 	})
 
 	// Add logging middleware
@@ -93,6 +95,8 @@ func main() {
 			ctx.Status(fiber.StatusInternalServerError)
 			return ctx.SendString(fmt.Sprintf("<p>Error uploading file: %v</p>", err))
 		}
+
+		redisClient.deleteShareCache(getUserID(ctx))
 
 		logWithFields(ctx, logrus.Fields{
 			"filename":    file.Filename,
@@ -206,6 +210,8 @@ func main() {
 			logWithFields(ctx, logrus.Fields{"filename": filename}).Info("File uploaded successfully (chunked)")
 		}
 
+		redisClient.deleteShareCache(getUserID(ctx))
+
 		return ctx.SendString(fmt.Sprintf("<p>File %s uploaded successfully!</p>", filename))
 	})
 
@@ -245,6 +251,8 @@ func main() {
 			ctx.Status(fiber.StatusInternalServerError)
 			return ctx.SendString(fmt.Sprintf("<p>Error uploading zip file: %v</p>", err))
 		}
+
+		redisClient.deleteShareCache(getUserID(ctx))
 
 		logWithFields(ctx, logrus.Fields{"zip_filename": zipFilename, "file_count": len(files)}).Info("Zip file created and uploaded successfully")
 		return ctx.SendString(fmt.Sprintf("<p>Zip %s created successfully! (%d files)</p>", zipFilename, len(files)))
@@ -360,10 +368,24 @@ func main() {
 
 	app.Get("/my-shares", func(ctx *fiber.Ctx) error {
 		ctx.Set(fiber.HeaderContentType, "text/html")
+		userID := ctx.Query("user_id")
+		if userID == "" {
+			ctx.Status(fiber.StatusBadRequest)
+			return ctx.SendString("<p>Error: User ID is required</p>")
+		}
 
-		uploads, err := getUploads(ctx)
-		if err != nil {
-			logWithContext(ctx).WithError(err).Error("Error retrieving uploads")
+		uploads, err := redisClient.getShareCache(userID)
+
+		if err != nil && err != redis.Nil {
+
+			uploads, err = getUploads(ctx)
+			if err != nil {
+				logWithContext(ctx).WithError(err).Error("Error retrieving uploads")
+				ctx.Status(fiber.StatusInternalServerError)
+				return ctx.SendString("<p>Error retrieving uploads</p>")
+			}
+
+			redisClient.setShareCache(userID, uploads)
 		}
 
 		if len(uploads) == 0 {

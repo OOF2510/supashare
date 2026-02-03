@@ -28,8 +28,6 @@ func initS3() *S3Client {
 	region := os.Getenv("S3_REGION")
 	bucketName := os.Getenv("S3_BUCKET_NAME")
 
-	// Create S3 client with custom endpoint for Supabase
-	// Use PathStyle addressing since Supabase S3 API uses path-style
 	cfg := aws.Config{
 		Region:      region,
 		Credentials: credentials.NewStaticCredentialsProvider(accessKey, secretKey, ""),
@@ -39,10 +37,9 @@ func initS3() *S3Client {
 		if endpoint != "" {
 			o.BaseEndpoint = aws.String(endpoint)
 		}
-		o.UsePathStyle = true // Supabase uses path-style URLs: endpoint/bucket/key
+		o.UsePathStyle = true
 	})
 
-	// Test bucket access with a simple HeadBucket call
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -78,7 +75,6 @@ func (s *S3Client) UploadFile(userId, filename string, data io.Reader, fileSize 
 		"bucket":    s.bucketName,
 	}).Info("starting file upload")
 
-	// Read all data into a buffer since we need to check if object exists first
 	var buf bytes.Buffer
 	if _, err := io.Copy(&buf, data); err != nil {
 		return "", fmt.Errorf("error reading file data: %w", err)
@@ -86,7 +82,6 @@ func (s *S3Client) UploadFile(userId, filename string, data io.Reader, fileSize 
 
 	objectKey := filename
 
-	// Check if object already exists
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	_, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(s.bucketName),
@@ -103,7 +98,6 @@ func (s *S3Client) UploadFile(userId, filename string, data io.Reader, fileSize 
 		}).Info("file already exists, using new key")
 	}
 
-	// Upload the file
 	ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -203,7 +197,6 @@ func (s *S3Client) UploadCtx(ctx *fiber.Ctx) error {
 
 		objectKey := file.Filename
 
-		// Check if object already exists
 		ctxCheck, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		_, errStat := s.client.HeadObject(ctxCheck, &s3.HeadObjectInput{
 			Bucket: aws.String(s.bucketName),
@@ -215,7 +208,6 @@ func (s *S3Client) UploadCtx(ctx *fiber.Ctx) error {
 			objectKey = fmt.Sprintf("%d_%s", time.Now().Unix(), file.Filename)
 		}
 
-		// Upload
 		ctxUpload, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		_, err = s.client.PutObject(ctxUpload, &s3.PutObjectInput{
 			Bucket:        aws.String(s.bucketName),
@@ -272,7 +264,6 @@ func (s *S3Client) UploadCtx(ctx *fiber.Ctx) error {
 		return ctx.SendString(fmt.Sprintf("<p>%d files uploaded successfully. Failed to upload: %v</p>", successCount, failedFiles))
 	}
 
-	// get list of uploaded filenames
 	var uploadedFilenames []string
 	for _, file := range files {
 		uploadedFilenames = append(uploadedFilenames, file.Filename)
