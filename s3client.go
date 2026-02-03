@@ -23,6 +23,7 @@ func initS3() *S3Client {
 	endpoint := os.Getenv("S3_STORAGE_ENDPOINT")
 	accessKey := os.Getenv("S3_ACCESS_KEY")
 	secretKey := os.Getenv("S3_SECRET_KEY")
+	region := os.Getenv("S3_REGION")
 
 	parsedURL, err := url.Parse(endpoint)
 	if err != nil {
@@ -31,7 +32,7 @@ func initS3() *S3Client {
 		}).Panic("unable to parse endpoint URL")
 	}
 
-	hostEndpoint := parsedURL.Host + parsedURL.Path
+	hostEndpoint := parsedURL.Host
 	if hostEndpoint == "" {
 		hostEndpoint = endpoint
 	}
@@ -40,6 +41,7 @@ func initS3() *S3Client {
 	client, err := minio.New(hostEndpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
 		Secure: secure,
+		Region: region,
 	})
 	if err != nil {
 		appLogger.WithError(err).WithFields(logrus.Fields{
