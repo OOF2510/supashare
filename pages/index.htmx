@@ -132,8 +132,7 @@
                         <h3 class="title is-4">Upload Files</h3>
                         <p class="subtitle is-6">Drag and drop files or click to browse and upload to Supashare.</p>
 
-                        <form id='upload-form' hx-encoding='multipart/form-data' hx-post='/upload'
-                            hx-target='#upload-result'>
+                        <form id='upload-form'>
                             <div class="upload-area" id="upload-area">
                                 <div style="font-size: 3rem; margin-bottom: 1rem;">📁</div>
                                 <p>Click to upload or drag files here</p>
@@ -151,7 +150,7 @@
                             <div class="mt-4" style="display: none;" id="progress-container">
                                 <progress id='upload-progress' value='0' max='100' class="progress is-primary"></progress>
                             </div>
-                            <button type="submit" class="button is-primary is-fullwidth mt-4">Upload Files</button>
+                            <button type="submit" class="button is-primary is-fullwidth mt-4" id="upload-btn">Upload Files</button>
                         </form>
                     </div>
                 </div>
@@ -411,25 +410,76 @@
             displaySelectedFiles();
         });
 
-        // Upload progress
-        htmx.on('#upload-form', 'htmx:xhr:progress', function (evt) {
-            const progressContainer = htmx.find('#progress-container');
-            const progressBar = htmx.find('#upload-progress');
-            progressContainer.style.display = 'block';
-            progressBar.setAttribute('value', evt.detail.loaded / evt.detail.total * 100);
-        });
+        const CHUNK_SIZE = 5 * 1024 * 1024;
 
-        // Hide progress bar after upload completes
-        htmx.on('#upload-form', 'htmx:afterRequest', function (evt) {
-            const progressContainer = htmx.find('#progress-container');
-            const progressBar = htmx.find('#upload-progress');
+        async function uploadFileInChunks(file) {
+            const uploadId = crypto.randomUUID();
+            const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+            const progressContainer = document.getElementById('progress-container');
+            const progressBar = document.getElementById('upload-progress');
+            const uploadResult = document.getElementById('upload-result');
+            const uploadBtn = document.getElementById('upload-btn');
+
+            progressContainer.style.display = 'block';
+            uploadBtn.disabled = true;
+            uploadResult.innerHTML = '<p>Uploading...</p>';
+
+            for (let index = 0; index < totalChunks; index++) {
+                const start = index * CHUNK_SIZE;
+                const end = Math.min(start + CHUNK_SIZE, file.size);
+                const chunk = file.slice(start, end);
+
+                const formData = new FormData();
+                formData.append('chunk', chunk, file.name);
+                formData.append('upload_id', uploadId);
+                formData.append('index', index.toString());
+                formData.append('total', totalChunks.toString());
+                formData.append('filename', file.name);
+                formData.append('user_id', getUserID());
+
+                try {
+                    const response = await fetch('/upload/chunk', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(errorText);
+                    }
+
+                    const progress = ((index + 1) / totalChunks) * 100;
+                    progressBar.setAttribute('value', progress.toString());
+
+                    if (index === totalChunks - 1) {
+                        const resultText = await response.text();
+                        uploadResult.innerHTML = resultText;
+                        showToast('File uploaded successfully!', 'success');
+                        fileInput.value = '';
+                        displaySelectedFiles();
+                    }
+                } catch (error) {
+                    uploadResult.innerHTML = `<p>Error: ${error.message}</p>`;
+                    showToast('Upload failed', 'danger');
+                    break;
+                }
+            }
+
             progressContainer.style.display = 'none';
             progressBar.setAttribute('value', '0');
+            uploadBtn.disabled = false;
+        }
+
+        document.getElementById('upload-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
             
-            // Clear files on successful upload
-            if (evt.detail.xhr.status === 200) {
-                fileInput.value = '';
-                displaySelectedFiles();
+            if (fileInput.files.length === 0) {
+                document.getElementById('upload-result').innerHTML = '<p>Error: No file selected</p>';
+                return;
+            }
+
+            for (const file of fileInput.files) {
+                await uploadFileInChunks(file);
             }
         });
 

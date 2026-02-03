@@ -6,7 +6,10 @@ import (
 	"io"
 	"mime/multipart"
 	"os"
+	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -14,6 +17,17 @@ import (
 )
 
 var URL string
+
+type ChunkedUpload struct {
+	Chunks   map[int][]byte
+	Total    int
+	Filename string
+	UserID   string
+	mu       sync.Mutex
+}
+
+var activeUploads = make(map[string]*ChunkedUpload)
+var uploadsMu sync.Mutex
 
 func main() {
 	err := godotenv.Load()
@@ -39,7 +53,9 @@ func main() {
 		panic(msg)
 	}
 
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		BodyLimit: 8 * 1024 * 1024,
+	})
 	s3Client := initS3()
 
 	app.Get("/", func(ctx *fiber.Ctx) error {
@@ -67,6 +83,113 @@ func main() {
 
 		fmt.Printf("File %s uploaded successfully\n", file.Filename)
 		return ctx.SendString(fmt.Sprintf("<p>File %s uploaded successfully!</p>", file.Filename))
+	})
+
+	app.Post("/upload/chunk", func(ctx *fiber.Ctx) error {
+		ctx.Set(fiber.HeaderContentType, "text/html")
+
+		userId := ctx.FormValue("user_id")
+		if userId == "" {
+			ctx.Status(fiber.StatusBadRequest)
+			return ctx.SendString("<p>Error: User ID is required</p>")
+		}
+
+		uploadId := ctx.FormValue("upload_id")
+		if uploadId == "" {
+			ctx.Status(fiber.StatusBadRequest)
+			return ctx.SendString("<p>Error: Upload ID is required</p>")
+		}
+
+		filename := ctx.FormValue("filename")
+		if filename == "" {
+			ctx.Status(fiber.StatusBadRequest)
+			return ctx.SendString("<p>Error: Filename is required</p>")
+		}
+
+		indexStr := ctx.FormValue("index")
+		index, err := strconv.Atoi(indexStr)
+		if err != nil {
+			ctx.Status(fiber.StatusBadRequest)
+			return ctx.SendString("<p>Error: Invalid chunk index</p>")
+		}
+
+		totalStr := ctx.FormValue("total")
+		total, err := strconv.Atoi(totalStr)
+		if err != nil {
+			ctx.Status(fiber.StatusBadRequest)
+			return ctx.SendString("<p>Error: Invalid total chunks</p>")
+		}
+
+		chunkFile, err := ctx.FormFile("chunk")
+		if err != nil {
+			ctx.Status(fiber.StatusBadRequest)
+			return ctx.SendString("<p>Error: No chunk uploaded</p>")
+		}
+
+		chunkData, err := chunkFile.Open()
+		if err != nil {
+			ctx.Status(fiber.StatusInternalServerError)
+			return ctx.SendString("<p>Error: Failed to read chunk</p>")
+		}
+		defer chunkData.Close()
+
+		chunkBytes, err := io.ReadAll(chunkData)
+		if err != nil {
+			ctx.Status(fiber.StatusInternalServerError)
+			return ctx.SendString("<p>Error: Failed to read chunk data</p>")
+		}
+
+		uploadsMu.Lock()
+		upload, exists := activeUploads[uploadId]
+		if !exists {
+			upload = &ChunkedUpload{
+				Chunks:   make(map[int][]byte),
+				Total:    total,
+				Filename: filename,
+				UserID:   userId,
+			}
+			activeUploads[uploadId] = upload
+		}
+		uploadsMu.Unlock()
+
+		upload.mu.Lock()
+		upload.Chunks[index] = chunkBytes
+		receivedCount := len(upload.Chunks)
+		upload.mu.Unlock()
+
+		if receivedCount == total {
+			upload.mu.Lock()
+
+			indices := make([]int, 0, len(upload.Chunks))
+			for i := range upload.Chunks {
+				indices = append(indices, i)
+			}
+			sort.Ints(indices)
+
+			var assembled []byte
+			var totalSize int64
+			for _, i := range indices {
+				assembled = append(assembled, upload.Chunks[i]...)
+				totalSize += int64(len(upload.Chunks[i]))
+			}
+
+			upload.mu.Unlock()
+
+			_, err = s3Client.UploadFile(userId, filename, bytes.NewReader(assembled), totalSize)
+
+			uploadsMu.Lock()
+			delete(activeUploads, uploadId)
+			uploadsMu.Unlock()
+
+			if err != nil {
+				ctx.Status(fiber.StatusInternalServerError)
+				return ctx.SendString(fmt.Sprintf("<p>Error uploading file: %v</p>", err))
+			}
+
+			fmt.Printf("File %s uploaded successfully (chunked)\n", filename)
+		}
+
+		return ctx.SendString(fmt.Sprintf("<p>File %s uploaded successfully!</p>", filename))
 	})
 
 	app.Post("/create-zip", func(ctx *fiber.Ctx) error {
