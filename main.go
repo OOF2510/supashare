@@ -14,7 +14,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
-	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 )
 
@@ -376,15 +375,13 @@ func main() {
 
 		uploads, err := redisClient.getShareCache(userID)
 
-		if err != nil && err != redis.Nil {
-
+		if err != nil {
 			uploads, err = getUploads(ctx)
 			if err != nil {
 				logWithContext(ctx).WithError(err).Error("Error retrieving uploads")
 				ctx.Status(fiber.StatusInternalServerError)
 				return ctx.SendString("<p>Error retrieving uploads</p>")
 			}
-
 			redisClient.setShareCache(userID, uploads)
 		}
 
