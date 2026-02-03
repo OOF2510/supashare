@@ -52,6 +52,7 @@ output binary will be in `./dist/<version>/supashare-<version>.x86_64`, pages/ c
 | `S3_STORAGE_ENDPOINT` | S3 endpoint URL | - |
 | `S3_BUCKET_NAME` | S3 bucket name | fileshare |
 | `LOG_LEVEL` | Logging level (debug, info, warn, error) | info |
+| `REDIS_URL` | rediss://url | - |
 
 ## API Endpoints
 
@@ -77,7 +78,7 @@ docker run -p 8080:8080 --env-file .env supashare
 
 - **Backend**: Go with Fiber
 - **Frontend**: HTMX with Bulma CSS
-- **Database**: PostgreSQL with GORM
+- **Database**: PostgreSQL with GORM and Reids for caching
 - **Storage**: S3-compatible (Supabase Storage, AWS S3, etc) with AWS SDK for Go
 - **Media Processing**: FFmpeg and imaging
 - **Logging**: Logrus
