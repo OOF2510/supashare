@@ -362,6 +362,8 @@ func main() {
 			return ctx.SendString(fmt.Sprintf("<p> %d files compressed successfully. Failed: %v</p>", successCount, failedFiles))
 		}
 
+		redisClient.deleteShareCache(getUserID(ctx))
+
 		return ctx.SendString(fmt.Sprintf("<p>Successfully compressed %d files!</p>", successCount))
 	})
 
