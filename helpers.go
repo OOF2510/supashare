@@ -44,6 +44,7 @@ func formatBytes(bytes uint64) string {
 
 func getUploads(ctx *fiber.Ctx) ([]Upload, error) {
 	userId := ctx.Query("user_id")
+	appLogger.WithField("user_id", userId).Info("Querying uploads for user")
 	if userId == "" {
 		ctx.Status(fiber.StatusBadRequest)
 		ctx.SendString("<p>Error: User ID is required</p>")
@@ -53,6 +54,7 @@ func getUploads(ctx *fiber.Ctx) ([]Upload, error) {
 	var uploads []Upload
 
 	if err := DB.Where("user_id = ?", userId).Order("uploaded_at DESC").Find(&uploads).Error; err != nil {
+		appLogger.WithField("user_id", userId).WithError(err).Error("Database error retrieving uploads")
 		ctx.Status(fiber.StatusInternalServerError)
 		ctx.SendString("<p>Error retrieving uploads</p>")
 		return nil, err
@@ -72,37 +74,46 @@ func generateShareLink() string {
 }
 
 func createZip(files []*multipart.FileHeader) (*bytes.Buffer, error) {
+	start := time.Now()
+	appLogger.WithField("file_count", len(files)).Info("Creating zip archive")
 	buf := new(bytes.Buffer)
 	zipper := zip.NewWriter(buf)
 
 	for _, file := range files {
 		fileReader, err := file.Open()
 		if err != nil {
+			appLogger.WithField("filename", file.Filename).WithError(err).Error("Failed to open file for zipping")
 			return nil, fmt.Errorf("Failed to open file %s: %w", file.Filename, err)
 		}
 		defer fileReader.Close()
 
 		zipFile, err := zipper.Create(file.Filename)
 		if err != nil {
+			appLogger.WithField("filename", file.Filename).WithError(err).Error("Failed to create zip entry")
 			return nil, fmt.Errorf("Failed to create zip for %s: %w", file.Filename, err)
 		}
 
 		_, err = io.Copy(zipFile, fileReader)
 		if err != nil {
+			appLogger.WithField("filename", file.Filename).WithError(err).Error("Failed to add file to zip")
 			return nil, fmt.Errorf("Failed to add file %s to zip: %w", file.Filename, err)
 		}
 	}
 
 	if err := zipper.Close(); err != nil {
+		appLogger.WithError(err).Error("Failed to finalize zip archive")
 		return nil, fmt.Errorf("Failed to finalize zip: %w", err)
 	}
 
+	appLogger.WithField("output_size", buf.Len()).WithField("duration_ms", time.Since(start).Milliseconds()).Info("Zip archive created successfully")
 	return buf, nil
 }
 
 func getSystemStats() (fiber.Map, error) {
+	appLogger.Debug("Gathering system stats")
 	cpuPercent, err := cpu.Percent(time.Second, false)
 	if err != nil {
+		appLogger.WithError(err).Error("Failed to retrieve CPU stats")
 		return fiber.Map{
 			"ok":    false,
 			"error": "Could not retrieve CPU usage",
@@ -110,6 +121,7 @@ func getSystemStats() (fiber.Map, error) {
 	}
 	memStat, err := mem.VirtualMemory()
 	if err != nil {
+		appLogger.WithError(err).Error("Failed to retrieve memory stats")
 		return fiber.Map{
 			"ok":    false,
 			"error": "Could not retrieve memory stats",
@@ -119,6 +131,7 @@ func getSystemStats() (fiber.Map, error) {
 	pid := os.Getpid()
 	proc, err := process.NewProcess(int32(pid))
 	if err != nil {
+		appLogger.WithError(err).Error("Failed to retrieve process info")
 		return fiber.Map{
 			"ok":    false,
 			"error": "Could not retrieve process info",
@@ -126,6 +139,7 @@ func getSystemStats() (fiber.Map, error) {
 	}
 	procMemInfo, err := proc.MemoryInfo()
 	if err != nil {
+		appLogger.WithError(err).Error("Failed to retrieve process memory stats")
 		return fiber.Map{
 			"ok":    false,
 			"error": "Could not retrieve process memory stats",
@@ -134,6 +148,7 @@ func getSystemStats() (fiber.Map, error) {
 
 	hostInfo, err := host.Info()
 	if err != nil {
+		appLogger.WithError(err).Error("Failed to retrieve host info")
 		return fiber.Map{
 			"ok":    false,
 			"error": "Could not retrieve host info",
@@ -181,20 +196,28 @@ func getCompressionQuality(qualityStr string) CompressionQuality {
 }
 
 func compressImage(file *multipart.FileHeader, quality CompressionQuality) (*bytes.Buffer, error) {
+	start := time.Now()
+	originalSize := file.Size
+	appLogger.WithField("filename", file.Filename).WithField("quality", quality).Info("Starting image compression")
+
 	srcFile, err := file.Open()
 	if err != nil {
+		appLogger.WithField("filename", file.Filename).WithError(err).Error("Failed to open image file")
 		return nil, fmt.Errorf("Failed to open image file: %w", err)
 	}
 	defer srcFile.Close()
 
 	img, err := imaging.Decode(srcFile)
 	if err != nil {
+		appLogger.WithField("filename", file.Filename).WithError(err).Error("Failed to decode image")
 		return nil, fmt.Errorf("Failed to decode image: %w", err)
 	}
 
 	bounds := img.Bounds()
 	width := bounds.Dx()
 	height := bounds.Dy()
+	dimensions := fmt.Sprintf("%dx%d", width, height)
+	appLogger.WithField("filename", file.Filename).WithField("dimensions", dimensions).Debug("Image dimensions decoded")
 
 	maxDimension := 2048
 	switch quality {
@@ -205,6 +228,7 @@ func compressImage(file *multipart.FileHeader, quality CompressionQuality) (*byt
 	}
 
 	if width > maxDimension || height > maxDimension {
+		appLogger.WithField("filename", file.Filename).WithField("max_dimension", maxDimension).Debug("Resizing image")
 		img = imaging.Fit(img, maxDimension, maxDimension, imaging.Lanczos)
 	}
 
@@ -237,21 +261,37 @@ func compressImage(file *multipart.FileHeader, quality CompressionQuality) (*byt
 	}
 
 	if err != nil {
+		appLogger.WithField("filename", file.Filename).WithError(err).Error("Failed to encode image")
 		return nil, fmt.Errorf("failed to encode image: %w", err)
 	}
+
+	compressedSize := int64(buf.Len())
+	reduction := float64(originalSize-compressedSize) / float64(originalSize) * 100
+	appLogger.WithField("filename", file.Filename).
+		WithField("original_size", originalSize).
+		WithField("compressed_size", compressedSize).
+		WithField("reduction_percent", reduction).
+		WithField("duration_ms", time.Since(start).Milliseconds()).
+		Info("Image compression completed successfully")
 
 	return buf, nil
 }
 
 func compressVideo(file *multipart.FileHeader, quality CompressionQuality) (*bytes.Buffer, error) {
+	start := time.Now()
+	originalSize := file.Size
+	appLogger.WithField("filename", file.Filename).WithField("quality", quality).Info("Starting video compression")
+
 	srcFile, err := file.Open()
 	if err != nil {
+		appLogger.WithField("filename", file.Filename).WithError(err).Error("Failed to open video file")
 		return nil, fmt.Errorf("Failed to open video file: %w", err)
 	}
 	defer srcFile.Close()
 
 	inputBuf := new(bytes.Buffer)
 	if _, err := inputBuf.ReadFrom(srcFile); err != nil {
+		appLogger.WithField("filename", file.Filename).WithError(err).Error("Failed to read video file")
 		return nil, fmt.Errorf("Failed to read video file: %w", err)
 	}
 
@@ -262,6 +302,8 @@ func compressVideo(file *multipart.FileHeader, quality CompressionQuality) (*byt
 	case QualityLow:
 		crf = "32"
 	}
+
+	appLogger.WithField("filename", file.Filename).WithField("crf", crf).Debug("FFmpeg compression settings")
 
 	outputBuf := new(bytes.Buffer)
 
@@ -281,14 +323,26 @@ func compressVideo(file *multipart.FileHeader, quality CompressionQuality) (*byt
 		"pipe:1", // output to stdout
 	)
 
+	appLogger.WithField("filename", file.Filename).WithField("operation", "ffmpeg").Debug("Executing FFmpeg command")
+
 	cmd.Stdin = bytes.NewReader(inputBuf.Bytes())
 	cmd.Stdout = outputBuf
 	cmd.Stderr = os.Stderr
 
 	err = cmd.Run()
 	if err != nil {
+		appLogger.WithField("filename", file.Filename).WithError(err).Error("Failed to compress video")
 		return nil, fmt.Errorf("Failed to compress video: %w", err)
 	}
+
+	compressedSize := int64(outputBuf.Len())
+	reduction := float64(originalSize-compressedSize) / float64(originalSize) * 100
+	appLogger.WithField("filename", file.Filename).
+		WithField("original_size", originalSize).
+		WithField("compressed_size", compressedSize).
+		WithField("reduction_percent", reduction).
+		WithField("duration_ms", time.Since(start).Milliseconds()).
+		Info("Video compression completed successfully")
 
 	return outputBuf, nil
 }

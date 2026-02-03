@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -41,6 +42,10 @@ func initDB() error {
 		return fmt.Errorf("Failed to connect to database: %w", err)
 	}
 
-	fmt.Println("Database Initialized Successfully (PrepareStmt: false, PreferSimpleProtocol: true)")
+	appLogger.WithFields(logrus.Fields{
+		"dsn_masked":             maskDSN(url),
+		"prepare_stmt":           false,
+		"prefer_simple_protocol": true,
+	}).Info("Database connection established")
 	return nil
 }

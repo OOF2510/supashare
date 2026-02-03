@@ -14,6 +14,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
+	"github.com/sirupsen/logrus"
 )
 
 var URL string
@@ -30,9 +31,12 @@ var activeUploads = make(map[string]*ChunkedUpload)
 var uploadsMu sync.Mutex
 
 func main() {
+	// Initialize logger first
+	initLogger()
+
 	err := godotenv.Load()
 	if err != nil {
-		fmt.Println("Error loading .env file, proceeding with system environment variables")
+		appLogger.Warn("Error loading .env file, proceeding with system environment variables")
 	}
 
 	port := os.Getenv("PORT")
@@ -49,13 +53,16 @@ func main() {
 
 	err = initDB()
 	if err != nil {
-		msg := fmt.Errorf("Database initialization error: %v\n", err)
-		panic(msg)
+		appLogger.WithError(err).Fatal("Database initialization failed")
 	}
 
 	app := fiber.New(fiber.Config{
 		BodyLimit: 8 * 1024 * 1024,
 	})
+
+	// Add logging middleware
+	app.Use(loggerMiddleware())
+
 	s3Client := initS3()
 
 	app.Get("/", func(ctx *fiber.Ctx) error {
@@ -68,20 +75,30 @@ func main() {
 
 		file, err := ctx.FormFile("file")
 		if err != nil {
-			fmt.Println(fmt.Errorf("No file uploaded: %w", err))
+			logWithContext(ctx).WithError(err).Error("No file uploaded")
 			ctx.Status(fiber.StatusBadRequest)
 			return ctx.SendString("<p>Error: No file uploaded</p>")
 		}
 
+		start := time.Now()
+		logWithFields(ctx, logrus.Fields{
+			"filename":  file.Filename,
+			"file_size": formatBytes(uint64(file.Size)),
+		}).Info("Starting file upload")
+
 		// upload to supabase storage
 		err = s3Client.UploadCtx(ctx)
 		if err != nil {
-			fmt.Println(fmt.Errorf("Error uploading file: %w", err))
+			logWithContext(ctx).WithError(err).Error("File upload failed")
 			ctx.Status(fiber.StatusInternalServerError)
 			return ctx.SendString(fmt.Sprintf("<p>Error uploading file: %v</p>", err))
 		}
 
-		fmt.Printf("File %s uploaded successfully\n", file.Filename)
+		logWithFields(ctx, logrus.Fields{
+			"filename":    file.Filename,
+			"file_size":   formatBytes(uint64(file.Size)),
+			"duration_ms": float64(time.Since(start).Nanoseconds()) / 1e6,
+		}).Info("File uploaded successfully")
 		return ctx.SendString(fmt.Sprintf("<p>File %s uploaded successfully!</p>", file.Filename))
 	})
 
@@ -186,7 +203,7 @@ func main() {
 				return ctx.SendString(fmt.Sprintf("<p>Error uploading file: %v</p>", err))
 			}
 
-			fmt.Printf("File %s uploaded successfully (chunked)\n", filename)
+			logWithFields(ctx, logrus.Fields{"filename": filename}).Info("File uploaded successfully (chunked)")
 		}
 
 		return ctx.SendString(fmt.Sprintf("<p>File %s uploaded successfully!</p>", filename))
@@ -215,7 +232,7 @@ func main() {
 
 		zipBuffer, err := createZip(files)
 		if err != nil {
-			fmt.Println(fmt.Errorf("Error creating zip: %w", err))
+			logWithContext(ctx).WithError(err).Error("Error creating zip")
 			ctx.Status(fiber.StatusInternalServerError)
 			return ctx.SendString("<p>Error creating zip archive</p>")
 		}
@@ -224,12 +241,12 @@ func main() {
 
 		_, err = s3Client.UploadFile(userId, zipFilename, bytes.NewReader(zipBuffer.Bytes()), int64(zipBuffer.Len()))
 		if err != nil {
-			fmt.Println(fmt.Errorf("Error uploading zip: %w", err))
+			logWithContext(ctx).WithError(err).Error("Error uploading zip")
 			ctx.Status(fiber.StatusInternalServerError)
 			return ctx.SendString(fmt.Sprintf("<p>Error uploading zip file: %v</p>", err))
 		}
 
-		fmt.Printf("Zip file %s created and uploaded successfully\n", zipFilename)
+		logWithFields(ctx, logrus.Fields{"zip_filename": zipFilename, "file_count": len(files)}).Info("Zip file created and uploaded successfully")
 		return ctx.SendString(fmt.Sprintf("<p>Zip %s created successfully! (%d files)</p>", zipFilename, len(files)))
 	})
 
@@ -280,7 +297,7 @@ func main() {
 		for _, file := range imageFiles {
 			compressed, err := compressImage(file, quality)
 			if err != nil {
-				fmt.Printf("Error compressing image %s: %v\n", file.Filename, err)
+				logWithFields(ctx, logrus.Fields{"filename": file.Filename, "error": err.Error()}).Error("Error compressing image")
 				failedFiles = append(failedFiles, file.Filename)
 				continue
 			}
@@ -289,23 +306,24 @@ func main() {
 
 			_, err = s3Client.UploadFile(userId, compressedFilename, bytes.NewReader(compressed.Bytes()), int64(compressed.Len()))
 			if err != nil {
-				fmt.Printf("Error uploading compressed image %s: %v\n", file.Filename, err)
+				logWithFields(ctx, logrus.Fields{"filename": file.Filename, "error": err.Error()}).Error("Error uploading compressed image")
 				failedFiles = append(failedFiles, file.Filename)
 				continue
 			}
 
 			successCount++
-			fmt.Printf("Image %s compressed: %s -> %s (%.1f%% reduction)\n",
-				file.Filename,
-				formatBytes(uint64(file.Size)),
-				formatBytes(uint64(compressed.Len())),
-				(1-float64(compressed.Len())/float64(file.Size))*100)
+			logWithFields(ctx, logrus.Fields{
+				"filename":          file.Filename,
+				"original_size":     formatBytes(uint64(file.Size)),
+				"compressed_size":   formatBytes(uint64(compressed.Len())),
+				"reduction_percent": (1 - float64(compressed.Len())/float64(file.Size)) * 100,
+			}).Info("Image compressed successfully")
 		}
 
 		for _, file := range videoFiles {
 			compressed, err := compressVideo(file, quality)
 			if err != nil {
-				fmt.Printf("Error compressing video %s: %v\n", file.Filename, err)
+				logWithFields(ctx, logrus.Fields{"filename": file.Filename, "error": err.Error()}).Error("Error compressing video")
 				failedFiles = append(failedFiles, file.Filename)
 				continue
 			}
@@ -314,17 +332,18 @@ func main() {
 
 			_, err = s3Client.UploadFile(userId, compressedFilename, bytes.NewReader(compressed.Bytes()), int64(compressed.Len()))
 			if err != nil {
-				fmt.Printf("Error uploading compressed video %s: %v\n", file.Filename, err)
+				logWithFields(ctx, logrus.Fields{"filename": file.Filename, "error": err.Error()}).Error("Error uploading compressed video")
 				failedFiles = append(failedFiles, file.Filename)
 				continue
 			}
 
 			successCount++
-			fmt.Printf("Video %s compressed: %s -> %s (%.1f%% reduction)\n",
-				file.Filename,
-				formatBytes(uint64(file.Size)),
-				formatBytes(uint64(compressed.Len())),
-				(1-float64(compressed.Len())/float64(file.Size))*100)
+			logWithFields(ctx, logrus.Fields{
+				"filename":          file.Filename,
+				"original_size":     formatBytes(uint64(file.Size)),
+				"compressed_size":   formatBytes(uint64(compressed.Len())),
+				"reduction_percent": (1 - float64(compressed.Len())/float64(file.Size)) * 100,
+			}).Info("Video compressed successfully")
 		}
 
 		if successCount == 0 {
@@ -344,7 +363,7 @@ func main() {
 
 		uploads, err := getUploads(ctx)
 		if err != nil {
-			fmt.Println(fmt.Errorf("Error retrieving uploads: %w", err))
+			logWithContext(ctx).WithError(err).Error("Error retrieving uploads")
 		}
 
 		if len(uploads) == 0 {
@@ -395,7 +414,7 @@ func main() {
 			ctx.Status(fiber.StatusNotFound)
 			ctx.Set(fiber.HeaderContentType, "text/html")
 
-			fmt.Println(fmt.Errorf("File not found for share ID %s: %w", shareId, err))
+			logWithFields(ctx, logrus.Fields{"share_id": shareId, "error": err.Error()}).Error("File not found for share ID")
 			return ctx.SendString("<p>File not found</p>")
 		}
 
@@ -404,7 +423,7 @@ func main() {
 			ctx.Status(fiber.StatusInternalServerError)
 			ctx.Set(fiber.HeaderContentType, "text/html")
 
-			fmt.Println(fmt.Errorf("Error retrieving file stream: %w", err))
+			logWithFields(ctx, logrus.Fields{"share_id": shareId, "error": err.Error()}).Error("Error retrieving file stream")
 			return ctx.SendString("<p>Error retrieving file</p>")
 		}
 		defer fileStream.Close()
@@ -417,7 +436,7 @@ func main() {
 		_, err = io.Copy(ctx.Response().BodyWriter(), fileStream)
 		if err != nil {
 			ctx.Status(fiber.StatusInternalServerError)
-			fmt.Println(fmt.Errorf("Error sending file: %w", err))
+			logWithFields(ctx, logrus.Fields{"share_id": shareId, "error": err.Error()}).Error("Error sending file")
 			return nil
 		}
 
@@ -434,7 +453,7 @@ func main() {
 		return ctx.JSON(stats)
 	})
 
-	fmt.Printf("Starting server on %s\n", URL)
+	appLogger.WithField("url", URL).Info("Starting server")
 	if err := app.Listen(":" + port); err != nil {
 		panic(fmt.Sprintf("Server error: %v\n", err))
 	}
