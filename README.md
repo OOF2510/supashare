@@ -78,7 +78,8 @@ docker run -p 8080:8080 --env-file .env supashare
 - **Backend**: Go with Fiber
 - **Frontend**: HTMX with Bulma CSS
 - **Database**: PostgreSQL with GORM
-- **Storage**: S3-compatible (Supabase Storage, MinIO, AWS S3)
+- **Storage**: S3-compatible (Supabase Storage, AWS S3, etc) with AWS SDK for Go
+- **Media Processing**: FFmpeg and imaging
 - **Logging**: Logrus
 
 ## License

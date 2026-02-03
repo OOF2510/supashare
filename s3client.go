@@ -1,22 +1,24 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gofiber/fiber/v2"
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/sirupsen/logrus"
 )
 
 type S3Client struct {
-	*minio.Client
+	client     *s3.Client
+	bucketName string
 }
 
 func initS3() *S3Client {
@@ -24,70 +26,98 @@ func initS3() *S3Client {
 	accessKey := os.Getenv("S3_ACCESS_KEY")
 	secretKey := os.Getenv("S3_SECRET_KEY")
 	region := os.Getenv("S3_REGION")
+	bucketName := os.Getenv("S3_BUCKET_NAME")
 
-	parsedURL, err := url.Parse(endpoint)
-	if err != nil {
-		appLogger.WithError(err).WithFields(logrus.Fields{
-			"endpoint": endpoint,
-		}).Panic("unable to parse endpoint URL")
+	// Create S3 client with custom endpoint for Supabase
+	// Use PathStyle addressing since Supabase S3 API uses path-style
+	cfg := aws.Config{
+		Region:      region,
+		Credentials: credentials.NewStaticCredentialsProvider(accessKey, secretKey, ""),
 	}
 
-	hostEndpoint := parsedURL.Host
-	if hostEndpoint == "" {
-		hostEndpoint = endpoint
-	}
+	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+		if endpoint != "" {
+			o.BaseEndpoint = aws.String(endpoint)
+		}
+		o.UsePathStyle = true // Supabase uses path-style URLs: endpoint/bucket/key
+	})
 
-	secure := parsedURL.Scheme == "https" || parsedURL.Scheme == ""
-	client, err := minio.New(hostEndpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
-		Secure: secure,
-		Region: region,
+	// Test bucket access with a simple HeadBucket call
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := client.HeadBucket(ctx, &s3.HeadBucketInput{
+		Bucket: aws.String(bucketName),
 	})
 	if err != nil {
 		appLogger.WithError(err).WithFields(logrus.Fields{
-			"endpoint": hostEndpoint,
-			"secure":   secure,
-		}).Panic("unable to create Minio client")
-	}
-
-	bucketName := os.Getenv("S3_BUCKET_NAME")
-	ctx := context.Background()
-	exists, err := client.BucketExists(ctx, bucketName)
-	if err != nil {
-		appLogger.WithError(err).WithFields(logrus.Fields{
-			"bucket": bucketName,
-		}).Warn("failed to check bucket existence")
-	} else if !exists {
-		appLogger.WithFields(logrus.Fields{
-			"bucket": bucketName,
-		}).Warn("bucket does not exist")
+			"bucket":   bucketName,
+			"endpoint": endpoint,
+		}).Warn("failed to access bucket - may not exist or credentials incorrect")
 	}
 
 	appLogger.WithFields(logrus.Fields{
-		"endpoint": hostEndpoint,
+		"endpoint": endpoint,
 		"bucket":   bucketName,
-		"secure":   secure,
+		"region":   region,
 	}).Info("S3 client initialized successfully")
 
-	return &S3Client{Client: client}
+	return &S3Client{
+		client:     client,
+		bucketName: bucketName,
+	}
 }
 
 func (s *S3Client) UploadFile(userId, filename string, data io.Reader, fileSize int64) (string, error) {
-	bucketName := os.Getenv("S3_BUCKET_NAME")
 	startTime := time.Now()
 
 	appLogger.WithFields(logrus.Fields{
 		"user_id":   userId,
 		"filename":  filename,
 		"file_size": fileSize,
-		"bucket":    bucketName,
+		"bucket":    s.bucketName,
 	}).Info("starting file upload")
 
-	_, err := s.Client.PutObject(context.TODO(), bucketName, filename, data, fileSize, minio.PutObjectOptions{})
+	// Read all data into a buffer since we need to check if object exists first
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, data); err != nil {
+		return "", fmt.Errorf("error reading file data: %w", err)
+	}
+
+	objectKey := filename
+
+	// Check if object already exists
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	_, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(s.bucketName),
+		Key:    aws.String(objectKey),
+	})
+	cancel()
+
+	if err == nil {
+		// Object exists, append timestamp
+		objectKey = fmt.Sprintf("%d_%s", time.Now().Unix(), filename)
+		appLogger.WithFields(logrus.Fields{
+			"original_filename": filename,
+			"new_object_key":    objectKey,
+		}).Info("file already exists, using new key")
+	}
+
+	// Upload the file
+	ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:        aws.String(s.bucketName),
+		Key:           aws.String(objectKey),
+		Body:          bytes.NewReader(buf.Bytes()),
+		ContentLength: aws.Int64(int64(buf.Len())),
+	})
 	if err != nil {
 		appLogger.WithError(err).WithFields(logrus.Fields{
 			"user_id":  userId,
 			"filename": filename,
+			"key":      objectKey,
 		}).Error("file upload failed")
 		return "", fmt.Errorf("error uploading file: %w", err)
 	}
@@ -96,6 +126,7 @@ func (s *S3Client) UploadFile(userId, filename string, data io.Reader, fileSize 
 	appLogger.WithFields(logrus.Fields{
 		"user_id":   userId,
 		"filename":  filename,
+		"key":       objectKey,
 		"file_size": fileSize,
 		"duration":  duration,
 	}).Info("file upload completed successfully")
@@ -104,7 +135,7 @@ func (s *S3Client) UploadFile(userId, filename string, data io.Reader, fileSize 
 	uploadRecord := Upload{
 		UserID:    userId,
 		Filename:  filename,
-		FileKey:   filename,
+		FileKey:   objectKey,
 		FileSize:  fileSize,
 		ShareLink: shareLink,
 	}
@@ -136,8 +167,6 @@ func (s *S3Client) UploadCtx(ctx *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "<p>No files uploaded</p>")
 	}
 
-	bucketName := os.Getenv("S3_BUCKET_NAME")
-
 	appLogger.WithFields(logrus.Fields{
 		"user_id":    userId,
 		"file_count": len(files),
@@ -159,15 +188,43 @@ func (s *S3Client) UploadCtx(ctx *fiber.Ctx) error {
 			continue
 		}
 
+		// Read file content
+		var buf bytes.Buffer
+		if _, err := io.Copy(&buf, fileBuffer); err != nil {
+			appLogger.WithError(err).WithFields(logrus.Fields{
+				"filename": file.Filename,
+				"user_id":  userId,
+			}).Warn("failed to read file")
+			fileBuffer.Close()
+			failedFiles = append(failedFiles, file.Filename)
+			continue
+		}
+		fileBuffer.Close()
+
 		objectKey := file.Filename
 
 		// Check if object already exists
-		_, errStat := s.Client.StatObject(context.TODO(), bucketName, objectKey, minio.StatObjectOptions{})
+		ctxCheck, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_, errStat := s.client.HeadObject(ctxCheck, &s3.HeadObjectInput{
+			Bucket: aws.String(s.bucketName),
+			Key:    aws.String(objectKey),
+		})
+		cancel()
+
 		if errStat == nil {
 			objectKey = fmt.Sprintf("%d_%s", time.Now().Unix(), file.Filename)
 		}
 
-		_, err = s.Client.PutObject(context.TODO(), bucketName, objectKey, fileBuffer, file.Size, minio.PutObjectOptions{})
+		// Upload
+		ctxUpload, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		_, err = s.client.PutObject(ctxUpload, &s3.PutObjectInput{
+			Bucket:        aws.String(s.bucketName),
+			Key:           aws.String(objectKey),
+			Body:          bytes.NewReader(buf.Bytes()),
+			ContentLength: aws.Int64(int64(buf.Len())),
+		})
+		cancel()
+
 		if err != nil {
 			appLogger.WithError(err).WithFields(logrus.Fields{
 				"filename":   file.Filename,
@@ -177,7 +234,6 @@ func (s *S3Client) UploadCtx(ctx *fiber.Ctx) error {
 			failedFiles = append(failedFiles, file.Filename)
 			continue
 		}
-		fileBuffer.Close()
 
 		shareLink := generateShareLink()
 
@@ -226,21 +282,25 @@ func (s *S3Client) UploadCtx(ctx *fiber.Ctx) error {
 }
 
 func (s *S3Client) getFileStream(fileKey string) (io.ReadCloser, error) {
-	bucketName := os.Getenv("S3_BUCKET_NAME")
-
 	appLogger.WithFields(logrus.Fields{
 		"file_key": fileKey,
-		"bucket":   bucketName,
+		"bucket":   s.bucketName,
 	}).Debug("retrieving file stream")
 
-	output, err := s.Client.GetObject(context.TODO(), bucketName, fileKey, minio.GetObjectOptions{})
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	output, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucketName),
+		Key:    aws.String(fileKey),
+	})
 	if err != nil {
 		appLogger.WithError(err).WithFields(logrus.Fields{
 			"file_key": fileKey,
-			"bucket":   bucketName,
+			"bucket":   s.bucketName,
 		}).Error("failed to get file stream")
 		return nil, fmt.Errorf("failed to get file stream: %w", err)
 	}
 
-	return output, nil
+	return output.Body, nil
 }
