@@ -36,7 +36,7 @@ cp .env.example .env
 
 3. Build the project:
 ```bash
-./build.bash <version>
+make build VERSION=<version>
 ```
 output binary will be in `./dist/<version>/supashare-<version>.x86_64`, pages/ copied into `./dist/<version>/pages/`, and .env symlinked to `./dist/<version>/.env`
 
