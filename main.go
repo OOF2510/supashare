@@ -453,12 +453,13 @@ func main() {
 		ctx.Set(fiber.HeaderContentDisposition, fmt.Sprintf("attachment; filename=\"%s\"", upload.Filename))
 		ctx.Set(fiber.HeaderContentLength, fmt.Sprintf("%d", upload.FileSize))
 
-		// copy stream to response
-		_, err = io.Copy(ctx.Response().BodyWriter(), fileStream)
+		written, err := io.Copy(ctx.Response().BodyWriter(), fileStream)
 		if err != nil {
-			ctx.Status(fiber.StatusInternalServerError)
-			logWithFields(ctx, logrus.Fields{"share_id": shareId, "error": err.Error()}).Error("Error sending file")
-			return nil
+			if written == 0 {
+				logWithFields(ctx, logrus.Fields{"share_id": shareId, "error": err.Error()}).Error("Failed to start file transfer")
+			} else {
+				logWithFields(ctx, logrus.Fields{"share_id": shareId, "bytes_sent": written}).Debug("Client disconnected during transfer")
+			}
 		}
 
 		return nil
