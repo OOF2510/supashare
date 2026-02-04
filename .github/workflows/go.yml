@@ -23,21 +23,15 @@ jobs:
         uses: crazy-max/ghaction-upx@v3
         with:
           install-only: true
-
-      - name: Cache UPX
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/upx
-          key: ${{ runner.os }}-upx-v4
-          restore-keys: |
-            ${{ runner.os }}-upx-
+      
+      - name: Setup Just
+        uses: extractions/setup-just@v3
 
       - name: Set short git commit SHA
         run: calculatedSha=$(git rev-parse --short ${{ github.sha }}) && echo "COMMIT_SHORT_SHA=$calculatedSha" >> $GITHUB_ENV
 
       - name: Build
-        run: make build VERSION=${{ env.COMMIT_SHORT_SHA }}
+        run: just build ${{ env.COMMIT_SHORT_SHA }}
 
       - name: Binary File Size
         run: ls -lh ./dist/${{ env.COMMIT_SHORT_SHA }}/supashare-${{ env.COMMIT_SHORT_SHA }}.x86_64
