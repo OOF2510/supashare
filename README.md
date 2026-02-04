@@ -16,8 +16,10 @@ A simple file sharing web app made with Go and HTMX.
 ### Prerequisites
 
 - Go 1.25.5+
-- PostgreSQL database
-- S3-compatible storage
+- Just (build tool)
+- PostgreSQL database (Supabase recommended)
+- Redis database (for caching)
+- S3-compatible storage (Supabase Storage recommended)
 - FFmpeg (for video compression)
 
 ### Installation
@@ -36,7 +38,7 @@ cp .env.example .env
 
 3. Build the project:
 ```bash
-make build VERSION=<version>
+just build <version>
 ```
 output binary will be in `./dist/<version>/supashare-<version>.x86_64`, pages/ copied into `./dist/<version>/pages/`, and .env symlinked to `./dist/<version>/.env`
 
