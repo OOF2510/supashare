@@ -35,7 +35,7 @@ func initRedis() *RedisClient {
 }
 
 func (r *RedisClient) getShareCache(userID string) ([]Upload, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	key := fmt.Sprintf("user:shares:%s", userID)
@@ -60,7 +60,7 @@ func (r *RedisClient) getShareCache(userID string) ([]Upload, error) {
 }
 
 func (r *RedisClient) setShareCache(userID string, uploads []Upload) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	data, err := json.Marshal(uploads)
@@ -80,7 +80,7 @@ func (r *RedisClient) setShareCache(userID string, uploads []Upload) {
 }
 
 func (r *RedisClient) deleteShareCache(userID string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	key := fmt.Sprintf("user:shares:%s", userID)

@@ -83,11 +83,11 @@ func (s *S3Client) UploadFile(userId, filename string, data io.Reader, fileSize 
 	objectKey := filename
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	_, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(s.bucketName),
 		Key:    aws.String(objectKey),
 	})
-	cancel()
 
 	if err == nil {
 		// Object exists, append timestamp
@@ -198,24 +198,24 @@ func (s *S3Client) UploadCtx(ctx *fiber.Ctx) error {
 		objectKey := file.Filename
 
 		ctxCheck, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 		_, errStat := s.client.HeadObject(ctxCheck, &s3.HeadObjectInput{
 			Bucket: aws.String(s.bucketName),
 			Key:    aws.String(objectKey),
 		})
-		cancel()
 
 		if errStat == nil {
 			objectKey = fmt.Sprintf("%d_%s", time.Now().Unix(), file.Filename)
 		}
 
 		ctxUpload, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
 		_, err = s.client.PutObject(ctxUpload, &s3.PutObjectInput{
 			Bucket:        aws.String(s.bucketName),
 			Key:           aws.String(objectKey),
 			Body:          bytes.NewReader(buf.Bytes()),
 			ContentLength: aws.Int64(int64(buf.Len())),
 		})
-		cancel()
 
 		if err != nil {
 			appLogger.WithError(err).WithFields(logrus.Fields{
