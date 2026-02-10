@@ -24,5 +24,3 @@ jobs:
         context: .
         file: ./Dockerfile
         tags: supashare:${{ github.run_id }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
